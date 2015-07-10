@@ -1,0 +1,8 @@
+#!/bin/bash
+
+export EPICS_CA_MAX_ARRAY_BYTES=30000000
+source /local/DPbin/Scripts/Paths.bash
+export EPICS_DISPLAY_PATH=$EPICS_SUPPORT/adls/:/local/DPbin/epics/iocs/mythenV3/mythenV3App/op/
+
+echo $EPICS_DISPLAY_PATH
+medm -x -macro "P="$1":, R=cam1: " mythenV3.adl &
