@@ -5,9 +5,9 @@
 # plot doesn't display
 epicsEnvSet EPICS_CA_MAX_ARRAY_BYTES 64008
 
-dbLoadDatabase("$(TOP)/dbd/mythenV3App.dbd")
+dbLoadDatabase("$(TOP)/dbd/mythenApp.dbd")
 
-mythenV3App_registerRecordDeviceDriver(pdbbase)
+mythenApp_registerRecordDeviceDriver(pdbbase)
 
 #drvAsynIPPortConfigure("portName","hostInfo",priority,noAutoConnect,
 #                        noProcessEos)
@@ -32,20 +32,20 @@ epicsEnvSet("NCHANS", "1280")
 epicsEnvSet("CBUFFS", "100")
 epicsEnvSet("EPICS_DB_INCLUDE_PATH","$(ADCORE)/db")
 
-# mythenV3Config (
+# mythenConfig (
 #               portName,       # The name of the asyn port driver to be created.
 #               IPPortName,     # The network port connection to the Mythen
 #               maxBuffers,     # The maximum number of NDArray buffers that the NDArrayPool for this driver is 
 #                                 allowed to allocate. Set this to -1 to allow an unlimited number of buffers.
 #               maxMemory)      # The maximum amount of memory that the NDArrayPool for this driver is 
 #                                 allowed to allocate. Set this to -1 to allow an unlimited amount of memory.
-mythenV3Config("SD1", "IP_M1K", -1,-1)
+mythenConfig("SD1", "IP_M1K", -1,-1)
 
 asynSetTraceMask("IP_M1K",0,1)
 
 dbLoadRecords("$(ADCORE)/db/ADBase.template",   "P=$(PREFIX),R=cam1:,PORT=$(PORT),ADDR=0,TIMEOUT=1")
 dbLoadRecords("$(ADCORE)/db/NDFile.template",   "P=$(PREFIX),R=cam1:,PORT=$(PORT),ADDR=0,TIMEOUT=1")
-dbLoadRecords("$(TOP)/mythenV3App/Db/mythenV3.template",        "P=$(PREFIX),R=cam1:,PORT=$(PORT),ADDR=0,TIMEOUT=1")
+dbLoadRecords("$(ADMYTHEN)/mythenApp/Db/mythen.template",        "P=$(PREFIX),R=cam1:,PORT=$(PORT),ADDR=0,TIMEOUT=1")
 
 # Create a standard arrays plugin
 NDStdArraysConfigure("Image1", 3, 0, "$(PORT)", 0, 0)
@@ -59,7 +59,7 @@ dbLoadRecords("$(ADCORE)/db/NDStdArrays.template", "P=$(PREFIX),R=image1:,PORT=I
 # Load asynRecord records on Mythen communication
 dbLoadTemplate("asynRecord.substitutions")
 
-set_requestfile_path("$(TOP)/mythenV3App/Db")
+set_requestfile_path("$(TOP)/mythenApp/Db")
 
 iocInit()
 
