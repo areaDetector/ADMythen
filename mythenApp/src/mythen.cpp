@@ -10,6 +10,9 @@
  *
  * Created:  June 17 2015
  *
+ * Modified: 
+ *            M. Moore ANL - APS/XSD/DET: Upated to work with other firmwares
+ *
  */
  
 #include <stddef.h>
@@ -46,7 +49,7 @@
 #define M1K_TIMEOUT 5.0
 #define MAX_FRAMES 500
 
-static const char *driverName = "mythenV3";
+static const char *driverName = "mythen";
 
 #define SDSettingString         "SD_SETTING"
 #define SDDelayTimeString       "SD_DELAY_TIME"
@@ -63,12 +66,13 @@ static const char *driverName = "mythenV3";
 #define SDTriggerString         "SD_TRIGGER"
 #define SDResetString           "SD_RESET"
 #define SDNModulesString        "SD_NMODULES"
+#define SDFirmwareVersionString  "SD_FIRMWARE_VERSION"  /* asynOctet    ro */
 
 
 /** Driver for sls array detectors using over TCP/IP socket */
-class mythenV3 : public ADDriver {
+class mythen : public ADDriver {
 public:
-    mythenV3(const char *portName, const char *IPPortName,
+    mythen(const char *portName, const char *IPPortName,
                    int maxBuffers, size_t maxMemory,
                    int priority, int stackSize);
 
@@ -101,6 +105,7 @@ public:
     int SDTrigger;
     int SDReset;
     int SDTau;
+    int SDFirmwareVersion;
     int SDNModules;
     #define LAST_SD_PARAM SDNModules
 
@@ -124,6 +129,7 @@ public:
     virtual asynStatus setReset();
     virtual asynStatus getSettings();
     virtual epicsInt32  getStatus();
+    virtual asynStatus getFirmware();
     void decodeRawReadout(int nmods, int nbits, int *data, int *result);
 
  private:                                       
@@ -137,7 +143,7 @@ public:
     epicsInt32 chanperline_, nbits_;
     epicsInt32 nmodules;
     char *IPPortName_;
-    char *firmwareVersion_;
+    char firmwareVersion_[7];
     char outString_[MAX_COMMAND_LEN];
     char inString_[MAX_COMMAND_LEN];
     asynStatus sendCommand();
@@ -148,7 +154,7 @@ public:
 #define NUM_SD_PARAMS (&LAST_SD_PARAM - &FIRST_SD_PARAM + 1)
 
 /** Sends a command to the detector and reads the response.**/
-asynStatus mythenV3::sendCommand()
+asynStatus mythen::sendCommand()
 {
   // int prevAcquiring;
   asynStatus status;
@@ -170,13 +176,13 @@ asynStatus mythenV3::sendCommand()
 }
 
 /** Send a string to the detector and reads the response.**/
-asynStatus mythenV3::writeReadMeter()
+asynStatus mythen::writeReadMeter()
 {
 	size_t nread;
 	size_t nwrite;
 	asynStatus status;
 	int eomReason;
-
+  char temp[7];
 	const char *functionName="writeReadMeter";
 
 	if(strcmp(outString_,"-get tau")==0)
@@ -185,8 +191,18 @@ asynStatus mythenV3::writeReadMeter()
 		 inString_, sizeof(epicsFloat32), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
 	}
 	else
-	 status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_),
-		 inString_, sizeof(int), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+	  {
+	    if (strcmp(outString_,"-get version")==0)
+	    {
+	      status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_),
+		            firmwareVersion_, sizeof(firmwareVersion_), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+	    }
+	    else
+	    {
+	      status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_),
+		        inString_, sizeof(int), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+		  }
+		}
 	if(status != asynSuccess)
 	      asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
 	          "%s:%s: error!\n",driverName, functionName);
@@ -194,7 +210,7 @@ asynStatus mythenV3::writeReadMeter()
 }
 
 /** Starts and stops the acquisition. **/
-asynStatus mythenV3::setAcquire(epicsInt32 value)
+asynStatus mythen::setAcquire(epicsInt32 value)
 {
     size_t nread;
     size_t nwrite;
@@ -234,7 +250,7 @@ asynStatus mythenV3::setAcquire(epicsInt32 value)
 
 /** Sets the number of frames
  * whitin an acquisition**/
-asynStatus mythenV3::setFrames(epicsInt32 value)
+asynStatus mythen::setFrames(epicsInt32 value)
 {
     asynStatus status;
 
@@ -249,7 +265,7 @@ asynStatus mythenV3::setFrames(epicsInt32 value)
 
 /** Sets the Trigger Mode
  *      0 = None, 1 = Single, 2=Continuous */
-asynStatus mythenV3::setTrigger(epicsInt32 value)
+asynStatus mythen::setTrigger(epicsInt32 value)
 {
     asynStatus status = asynSuccess;;
 
@@ -275,7 +291,7 @@ asynStatus mythenV3::setTrigger(epicsInt32 value)
 
 
 /** Sets the dead time constant for the rate correction**/
-asynStatus mythenV3::setTau(epicsFloat64 value)
+asynStatus mythen::setTau(epicsFloat64 value)
 {
     asynStatus status;
     if(value == -1 || value > 0)
@@ -297,7 +313,7 @@ asynStatus mythenV3::setTau(epicsFloat64 value)
 
 
 /** Sets the energy threshold for the module **/
-asynStatus mythenV3::setKthresh(epicsFloat64 value)
+asynStatus mythen::setKthresh(epicsFloat64 value)
 {
 	epicsInt32 i;
     asynStatus status = asynSuccess;
@@ -327,10 +343,13 @@ asynStatus mythenV3::setKthresh(epicsFloat64 value)
 
 
 /** Sets the energy threshold for the module **/
-asynStatus mythenV3::setEnergy(epicsFloat64 value)
+asynStatus mythen::setEnergy(epicsFloat64 value)
 {
+	
 	epicsInt32 i;
-    asynStatus status = asynSuccess;
+  asynStatus status = asynSuccess;
+  if ((int)firmwareVersion_[1]%48 >=3)
+  {
     for(i=0;i<this->nmodules;i++)
     {
 		epicsSnprintf(outString_, sizeof(outString_), "-module %d",i);
@@ -344,11 +363,12 @@ asynStatus mythenV3::setEnergy(epicsFloat64 value)
             "error check if value > 0 (outString = %s)",outString_);
         return asynError;
     }
+  }
 	return status;
 }
 
 /** Sets the exposure time of one frame. (units of 100ns) **/
-asynStatus mythenV3::setExposureTime(epicsFloat64 value)
+asynStatus mythen::setExposureTime(epicsFloat64 value)
 {
     asynStatus status;
     int hns = (int)(value * (1E+7));
@@ -358,7 +378,7 @@ asynStatus mythenV3::setExposureTime(epicsFloat64 value)
 }
 
 /** Sets the exposure time of one frame. (units of 100ns) **/
-asynStatus mythenV3::setDelayAfterTrigger(epicsFloat64 value)
+asynStatus mythen::setDelayAfterTrigger(epicsFloat64 value)
 {
     asynStatus status;
     int hns = (int)(value * (1E+7));
@@ -369,7 +389,7 @@ asynStatus mythenV3::setDelayAfterTrigger(epicsFloat64 value)
 
 /** Enables or disables the flatfield correction. After initialisation the
 flatfield correction is enabled. **/
-asynStatus mythenV3::setFCorrection(epicsInt32 value)
+asynStatus mythen::setFCorrection(epicsInt32 value)
 {
     asynStatus status;
 
@@ -379,7 +399,7 @@ asynStatus mythenV3::setFCorrection(epicsInt32 value)
 }
 
 /** Enables or disables the bad channel interpolation **/
-asynStatus mythenV3::setBadChanIntrpl(epicsInt32 value)
+asynStatus mythen::setBadChanIntrpl(epicsInt32 value)
 {
     asynStatus status;
 
@@ -391,7 +411,7 @@ asynStatus mythenV3::setBadChanIntrpl(epicsInt32 value)
 
 /** Enables or disables the rate correction. After initialisation the
 rate correction is disabled. **/
-asynStatus mythenV3::setRCorrection(epicsInt32 value)
+asynStatus mythen::setRCorrection(epicsInt32 value)
 {
     asynStatus status;
 
@@ -402,7 +422,7 @@ asynStatus mythenV3::setRCorrection(epicsInt32 value)
 
 /** Enables or disables the gates. After initialisation the
 gates are disabled. **/
-asynStatus mythenV3::setUseGates(epicsInt32 value)
+asynStatus mythen::setUseGates(epicsInt32 value)
 {
     asynStatus status;
 
@@ -412,7 +432,7 @@ asynStatus mythenV3::setUseGates(epicsInt32 value)
 }
 
 /** Number of gates.. **/
-asynStatus mythenV3::setNumGates(epicsInt32 value)
+asynStatus mythen::setNumGates(epicsInt32 value)
 {
     asynStatus status;
 
@@ -421,8 +441,22 @@ asynStatus mythenV3::setNumGates(epicsInt32 value)
     return status;
 }
 
+/** Get Firmware Version **/
+asynStatus mythen::getFirmware()
+{
+    asynStatus status;
+    //char 
+    
+    
+    epicsSnprintf(outString_, sizeof(outString_), "-get version");
+    writeReadMeter();
+    //epicsSnprintf(inString_, sizeof(inString_), "");
+    
+    return status;
+}
+
 /** Get Acquition Status */ 
-epicsInt32 mythenV3::getStatus()
+epicsInt32 mythen::getStatus()
 {
     epicsInt32 detStatus;
     int aux;
@@ -449,8 +483,9 @@ epicsInt32 mythenV3::getStatus()
     return detStatus;
 }
 
+
 /**Enables or disables the flipping of the channel numbering. **/
-asynStatus mythenV3::setFlip(epicsInt32 value)
+asynStatus mythen::setFlip(epicsInt32 value)
 {
     asynStatus status;
 
@@ -460,7 +495,7 @@ asynStatus mythenV3::setFlip(epicsInt32 value)
 }
 
 /**Enables or disables the flipping of the channel numbering. **/
-asynStatus mythenV3::setBitDepth(epicsInt32 value)
+asynStatus mythen::setBitDepth(epicsInt32 value)
 {
     asynStatus status;
     epicsInt32 nbits;
@@ -493,7 +528,7 @@ some common x-ray radiation. The command loads the energy calibration,
 the bad channels file, the flatfield correction, and the trimbits
 for the corresponding settings, and sets the energy threshold to a
 suitable value.**/
-asynStatus mythenV3::loadSettings(epicsInt32 value)
+asynStatus mythen::loadSettings(epicsInt32 value)
 {
     asynStatus status=asynSuccess;
     epicsInt32 i=0;
@@ -506,19 +541,48 @@ asynStatus mythenV3::loadSettings(epicsInt32 value)
 		switch(value){
 			//Cu
 			case 0:
-				epicsSnprintf(outString_, sizeof(outString_), "-settings Cu");
+			  if ((int)firmwareVersion_[1]%48 >=3)
+          {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings Cu");
+				  }
+				else
+				  {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings StdCu");
+				  }
 				break;
 
 			//Mo
 			case 1:
-				epicsSnprintf(outString_, sizeof(outString_), "-settings Mo");
+				
+				if ((int)firmwareVersion_[1]%48 >=3)
+          {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings Mo");
+				  }
+				else
+				  {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings StdMo");
+				  }
 				break;
 
 			//Ag
+			//Not supported on firmware verions less than 3
 			case 2:
 				epicsSnprintf(outString_, sizeof(outString_), "-settings Ag");
 				break;
-
+				
+			// Cr
+      case 3:
+				
+				if ((int)firmwareVersion_[1]%48 >=3)
+          {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings Cr");
+				  }
+				else
+				  {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings HgCr");
+				  }
+				break;
+				
 			default:
 				epicsSnprintf(outString_, sizeof(outString_), "-reset");
 				break;
@@ -534,7 +598,7 @@ asynStatus mythenV3::loadSettings(epicsInt32 value)
 
 /**Sets the detector back to default settings. This command takes
 about two seconds per module.**/
-asynStatus mythenV3::setReset()
+asynStatus mythen::setReset()
 {
     asynStatus status=asynSuccess;
     epicsInt32 i=0;
@@ -555,7 +619,7 @@ asynStatus mythenV3::setReset()
 
 
 /** Reads the values of all the modules parameters, sets them in the parameter library**/
-asynStatus mythenV3::getSettings()
+asynStatus mythen::getSettings()
 {
     int aux;
     epicsFloat32 faux;
@@ -566,9 +630,9 @@ asynStatus mythenV3::getSettings()
 
     if (acquiring_)
       {
-	strcpy(outString_,"Called during Acquire");
-	inString_[0] = NULL;
-	goto error;
+	      strcpy(outString_,"Called during Acquire");
+	      inString_[0] = NULL;
+	      goto error;
       }
     //    prevAcquiring = acquiring_;
     //    if (prevAcquiring) setAcquire(0);
@@ -610,12 +674,7 @@ asynStatus mythenV3::getSettings()
     else goto error;
     setDoubleParam(ADAcquireTime,DetTime);
 
-    strcpy(outString_, "-get delafter");
-    writeReadMeter();
-    aux=*((long*)this->inString_);
-    if (aux >= 0) DetTime = (aux * (1E-7));
-    else goto error;
-    setDoubleParam(SDDelayTime,DetTime);
+    
 
     strcpy(outString_, "-get frames");
     writeReadMeter();
@@ -628,11 +687,7 @@ asynStatus mythenV3::getSettings()
     if (faux == -1 || faux > 0) setDoubleParam(SDTau,faux);
     else goto error;
 
-    strcpy(outString_, "-get energy");
-    writeReadMeter();
-    faux=*((epicsFloat32*)this->inString_);
-    if (faux < 0) goto error;
-    else setDoubleParam(SDEnergy,faux);
+    
 
     strcpy(outString_, "-get kthresh");
     writeReadMeter();
@@ -640,25 +695,45 @@ asynStatus mythenV3::getSettings()
     if (faux < 0) goto error;
     else setDoubleParam(SDThreshold,faux);
 
-    /* Get trigger modes */
-    strcpy(outString_, "-get conttrig");
-    writeReadMeter();
-    aux=*((int*)this->inString_);
-    if (aux < 0) goto error;
-    if (aux == 1) 
-	setIntegerParam(SDTrigger, 2);
-    else 
-      {
-      	strcpy(outString_, "-get trig");
-	writeReadMeter();
-       	aux=*((int*)this->inString_);
-	if (aux < 0) goto error;
-	if (aux == 1)
-	  setIntegerParam(SDTrigger, 1);
-	else
-	  setIntegerParam(SDTrigger, 0);
-      }
-
+    
+      
+      
+    //Firmware greater than 3 commands  
+    if ((int)firmwareVersion_[1]%48 >=3)
+    {
+      strcpy(outString_, "-get energy");
+      writeReadMeter();
+      faux=*((epicsFloat32*)this->inString_);
+      if (faux < 0) goto error;
+      else setDoubleParam(SDEnergy,faux);
+      
+      strcpy(outString_, "-get delafter");
+      writeReadMeter();
+      aux=*((long*)this->inString_);
+      if (aux >= 0) DetTime = (aux * (1E-7));
+      else goto error;
+      setDoubleParam(SDDelayTime,DetTime);
+      
+      
+      /* Get trigger modes */
+      strcpy(outString_, "-get conttrig");
+      writeReadMeter();
+      aux=*((int*)this->inString_);
+      if (aux < 0) goto error;
+      if (aux == 1) 
+	      setIntegerParam(SDTrigger, 2);
+      else 
+        {
+        	strcpy(outString_, "-get trig");
+	        writeReadMeter();
+         	aux=*((int*)this->inString_);
+	        if (aux < 0) goto error;
+	        if (aux == 1)
+	          setIntegerParam(SDTrigger, 1);
+	        else
+	          setIntegerParam(SDTrigger, 0);
+        }
+    }
 
     callParamCallbacks();
     // if (prevAcquiring) setAcquire(1);
@@ -674,30 +749,30 @@ asynStatus mythenV3::getSettings()
 
 
 static void c_shutdown(void* arg) {
-    mythenV3 *p = (mythenV3*)arg;
+    mythen *p = (mythen*)arg;
     p->shutdown(); 
 }
 
 
 void acquisitionTaskC(void *drvPvt)
 {
-    mythenV3 *pPvt = (mythenV3*)drvPvt; 
+    mythen *pPvt = (mythen*)drvPvt; 
     pPvt->acquisitionTask(); 
 }
 
 void pollTaskC(void *drvPvt)
 {
-    mythenV3 *pPvt = (mythenV3*)drvPvt; 
+    mythen *pPvt = (mythen*)drvPvt; 
     pPvt->pollTask(); 
 }
 
-void mythenV3::shutdown()
+void mythen::shutdown()
 {
   //    if (pDetector)
   //        delete pDetector; 
 }
 
-void mythenV3::pollTask()
+void mythen::pollTask()
 {
     // int acquire; 
     /* Poll detector running status every second*/
@@ -713,7 +788,7 @@ void mythenV3::pollTask()
     }
 }
 
-void mythenV3::acquisitionTask()
+void mythen::acquisitionTask()
 {
     size_t nread, nread_expect;
     size_t nwrite;
@@ -794,7 +869,7 @@ void mythenV3::acquisitionTask()
     }
 }
 
-epicsInt32 mythenV3::dataCallback(epicsInt32 *pData)
+epicsInt32 mythen::dataCallback(epicsInt32 *pData)
 {
     NDArray *pImage; 
     int ndims = 1;
@@ -871,7 +946,7 @@ epicsInt32 mythenV3::dataCallback(epicsInt32 *pData)
 //
 // Output
 // result: array of size 1280*nmods with the number of counts of all // channels
-void mythenV3::decodeRawReadout(int nmods, int nbits, int *data, int *result)
+void mythen::decodeRawReadout(int nmods, int nbits, int *data, int *result)
 {
   // default for 24 bits
   int chanperline = 1; // default for 24 bits
@@ -911,7 +986,7 @@ void mythenV3::decodeRawReadout(int nmods, int nbits, int *data, int *result)
   * For all parameters it sets the value in the parameter library and calls any registered callbacks..
   * \param[in] pasynUser pasynUser structure that encodes the reason and address.
   * \param[in] value Value to write. */
-asynStatus mythenV3::writeOctet(asynUser *pasynUser, const char *value,
+asynStatus mythen::writeOctet(asynUser *pasynUser, const char *value,
                                             size_t nChars, size_t *nActual)
 {
     int function = pasynUser->reason;
@@ -953,7 +1028,7 @@ asynStatus mythenV3::writeOctet(asynUser *pasynUser, const char *value,
   * For all parameters it sets the value in the parameter library and calls any registered callbacks..
   * \param[in] pasynUser pasynUser structure that encodes the reason and address.
   * \param[in] value Value to write. */
-asynStatus mythenV3::writeInt32(asynUser *pasynUser, epicsInt32 value)
+asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
 {
     int function = pasynUser->reason;
     int status = asynSuccess;
@@ -1020,7 +1095,7 @@ asynStatus mythenV3::writeInt32(asynUser *pasynUser, epicsInt32 value)
   * For all  parameters it  sets the value in the parameter library and calls any registered callbacks.
   * \param[in] pasynUser pasynUser structure that encodes the reason and address.
   * \param[in] value Value to write. */
-asynStatus mythenV3::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
+asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
 {
     int function = pasynUser->reason;
     int status = asynSuccess;
@@ -1081,9 +1156,9 @@ asynStatus mythenV3::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
   * \param[in] fp File pointed passed by caller where the output is written to.
   * \param[in] details If >0 then driver details are printed.
   */
-void mythenV3::report(FILE *fp, int details)
+void mythen::report(FILE *fp, int details)
 {
-    fprintf(fp, "mythenV3 %s\n", this->portName);
+    fprintf(fp, "mythen %s\n", this->portName);
     if (details > 0) {
         int nx, ny, dataType;
         getIntegerParam(ADSizeX, &nx);
@@ -1096,16 +1171,16 @@ void mythenV3::report(FILE *fp, int details)
     ADDriver::report(fp, details);
 }
 
-extern "C" int mythenV3Config(const char *portName, const char *IPPortName,
+extern "C" int mythenConfig(const char *portName, const char *IPPortName,
                                     int maxBuffers, size_t maxMemory,
                                     int priority, int stackSize)
 {
-    new mythenV3(portName, IPPortName,
+    new mythen(portName, IPPortName,
 		 maxBuffers, maxMemory, priority, stackSize);
     return(asynSuccess);
 }
 
-/** Constructor for mythenV3 driver; most parameters are simply passed to ADDriver::ADDriver.
+/** Constructor for mythen driver; most parameters are simply passed to ADDriver::ADDriver.
   * After calling the base class constructor this method creates a thread to collect the detector data, 
   * and sets reasonable default values for the parameters defined in this class, asynNDArrayDriver, and ADDriver.
   * \param[in] portName The name of the asyn port driver to be created.
@@ -1117,7 +1192,7 @@ extern "C" int mythenV3Config(const char *portName, const char *IPPortName,
   * \param[in] priority The thread priority for the asyn port driver thread if ASYN_CANBLOCK is set in asynFlags.
   * \param[in] stackSize The stack size for the asyn port driver thread if ASYN_CANBLOCK is set in asynFlags.
   */
-mythenV3::mythenV3(const char *portName, const char *IPPortName,
+mythen::mythen(const char *portName, const char *IPPortName,
                                 int maxBuffers, size_t maxMemory,
                                 int priority, int stackSize)
 
@@ -1130,11 +1205,11 @@ mythenV3::mythenV3(const char *portName, const char *IPPortName,
 {
     int status = asynSuccess;
     // NDArray *pData; 
-    const char *functionName = "mythenV3";
+    const char *functionName = "mythen";
 
     IPPortName_ = epicsStrDup(IPPortName);
 
-    /* Create the epicsEvents for signaling to the mythenV3 task when acquisition starts and stops */
+    /* Create the epicsEvents for signaling to the mythen task when acquisition starts and stops */
     this->startEventId_ = epicsEventCreate(epicsEventEmpty);
     if (!this->startEventId_) {
         printf("%s:%s epicsEventCreate failure for start event\n", 
@@ -1165,10 +1240,14 @@ mythenV3::mythenV3(const char *portName, const char *IPPortName,
     createParam(SDResetString,          asynParamInt32,  &SDReset);
     createParam(SDTauString,            asynParamFloat64,  &SDTau); 
     createParam(SDNModulesString,      asynParamInt32,  &SDNModules); 
+    createParam(SDFirmwareVersionString,  asynParamOctet, &SDFirmwareVersion);
 
     status =  setStringParam (ADManufacturer, "Dectris");
-    status |= setStringParam (ADModel,        "Mythen V3");
-
+    status |= setStringParam (ADModel,        "Mythen");
+    
+    status |= getFirmware();
+    status |= setStringParam (SDFirmwareVersion, inString_);
+    
     int sensorSizeX = MAX_DIMS;
     int  sensorSizeY = 1;
     status |= setIntegerParam(ADMaxSizeX, sensorSizeX);
@@ -1191,7 +1270,10 @@ mythenV3::mythenV3(const char *portName, const char *IPPortName,
      * It is left here only for references.
      * */
     status |= setIntegerParam(ADStatus, getStatus());
-
+    
+    //Get Firmware version
+    
+    
     // Read the current settings from the device.  This will set parameters in the parameter library.
     getSettings();
 
@@ -1235,33 +1317,33 @@ mythenV3::mythenV3(const char *portName, const char *IPPortName,
 }
 
 /* Code for iocsh registration */
-static const iocshArg mythenV3ConfigArg0 = {"Port name", iocshArgString};
-static const iocshArg mythenV3ConfigArg1 = {"Asyn port name", iocshArgString};
-static const iocshArg mythenV3ConfigArg2 = {"maxBuffers", iocshArgInt};
-static const iocshArg mythenV3ConfigArg3 = {"maxMemory", iocshArgInt};
-static const iocshArg mythenV3ConfigArg4 = {"priority", iocshArgInt};
-static const iocshArg mythenV3ConfigArg5 = {"stackSize", iocshArgInt};
-static const iocshArg * const mythenV3ConfigArgs[] =  {&mythenV3ConfigArg0,
-                                                              &mythenV3ConfigArg1,
-                                                              &mythenV3ConfigArg2,
-                                                              &mythenV3ConfigArg3,
-                                                              &mythenV3ConfigArg4,
-                                                              &mythenV3ConfigArg5};
-static const iocshFuncDef configmythenV3 = {"mythenV3Config", 6, mythenV3ConfigArgs};
-static void configmythenV3CallFunc(const iocshArgBuf *args)
+static const iocshArg mythenConfigArg0 = {"Port name", iocshArgString};
+static const iocshArg mythenConfigArg1 = {"Asyn port name", iocshArgString};
+static const iocshArg mythenConfigArg2 = {"maxBuffers", iocshArgInt};
+static const iocshArg mythenConfigArg3 = {"maxMemory", iocshArgInt};
+static const iocshArg mythenConfigArg4 = {"priority", iocshArgInt};
+static const iocshArg mythenConfigArg5 = {"stackSize", iocshArgInt};
+static const iocshArg * const mythenConfigArgs[] =  {&mythenConfigArg0,
+                                                              &mythenConfigArg1,
+                                                              &mythenConfigArg2,
+                                                              &mythenConfigArg3,
+                                                              &mythenConfigArg4,
+                                                              &mythenConfigArg5};
+static const iocshFuncDef configmythen = {"mythenConfig", 6, mythenConfigArgs};
+static void configmythenCallFunc(const iocshArgBuf *args)
 {
-    mythenV3Config(args[0].sval, args[1].sval, args[2].ival,
+    mythenConfig(args[0].sval, args[1].sval, args[2].ival,
             args[3].ival, args[4].ival,  args[5].ival);
 }
 
 
-static void mythenV3Register(void)
+static void mythenRegister(void)
 {
 
-    iocshRegister(&configmythenV3, configmythenV3CallFunc);
+    iocshRegister(&configmythen, configmythenCallFunc);
 }
 
 extern "C" {
-epicsExportRegistrar(mythenV3Register);
+epicsExportRegistrar(mythenRegister);
 }
 

@@ -2,5 +2,5 @@ file "$(ASYN)/db/asynRecord.db"
 {
 pattern
 {P        R         PORT    ADDR    OMAX  IMAX}
-{9IDM1K:    asyn_1   IP_M1K    0     256  256}
+{dp_mythen1K:    asyn_1   IP_M1K    0     256  256}
 }
