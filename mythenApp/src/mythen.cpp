@@ -11,7 +11,8 @@
  * Created:  June 17 2015
  *
  * Modified: 
- *            M. Moore ANL - APS/XSD/DET: Upated to work with other firmwares
+ *            2015-07-14  M. Moore ANL - APS/XSD/DET: Upated to work with other firmwares 
+ *            2015-07-14  M. Moore ANL - APS/XSD/DET: Added ReadMode to allow Reading of corrected data from Detector
  *
  */
  
@@ -66,7 +67,8 @@ static const char *driverName = "mythen";
 #define SDTriggerString         "SD_TRIGGER"
 #define SDResetString           "SD_RESET"
 #define SDNModulesString        "SD_NMODULES"
-#define SDFirmwareVersionString  "SD_FIRMWARE_VERSION"  /* asynOctet    ro */
+#define SDFirmwareVersionString "SD_FIRMWARE_VERSION"  /* asynOctet    ro */
+#define SDReadModeString        "SD_READ_MODE"
 
 
 /** Driver for sls array detectors using over TCP/IP socket */
@@ -106,6 +108,7 @@ public:
     int SDReset;
     int SDTau;
     int SDFirmwareVersion;
+    int SDReadMode;
     int SDNModules;
     #define LAST_SD_PARAM SDNModules
 
@@ -141,7 +144,7 @@ public:
     epicsInt32 acquiring_;
     epicsInt32 frames_;
     epicsInt32 chanperline_, nbits_;
-    epicsInt32 nmodules;
+    epicsInt32 nmodules, readmode_;
     char *IPPortName_;
     char firmwareVersion_[7];
     char outString_[MAX_COMMAND_LEN];
@@ -806,9 +809,12 @@ void mythen::acquisitionTask()
         /* Is acquisition active? */
         getIntegerParam(ADAcquire, &acquire);
         
+        
+        
         /* If we are not acquiring then wait for a semaphore that is given when acquisition is started */
         if (!acquire || !acquiring_) 
         {
+            
             setIntegerParam(ADStatus, ADStatusIdle);
             callParamCallbacks();
             /* Release the lock while we wait for an event that says acquire has started, then lock again */
@@ -818,44 +824,52 @@ void mythen::acquisitionTask()
             eventStatus = epicsEventWait(this->startEventId_);
             // setStringParam(ADStatusMessage, "Acquiring data");
             // setIntegerParam(ADNumImagesCounter, 0);
-	    // getIntegerParam(ADAcquire, &acquire);
+	          // getIntegerParam(ADAcquire, &acquire);
+            if (readmode_==0)       //Raw Mode
+	            nread_expect = sizeof(epicsInt32)*this->nmodules*(1280/chanperline_);
+	          else
+	            nread_expect = sizeof(epicsInt32)*this->nmodules*(1280);
+	            
+	          dataOK = 1;
+	          retry = 2;
 
-	    nread_expect = sizeof(epicsInt32)*this->nmodules*(1280/chanperline_);
-	    dataOK = 1;
-	    retry = 2;
+                  // printf("Acquisition start - expect %d\n",nread_expect);
+	          do {
+	            nread=0;
+	            if (readmode_==0)
+	              strcpy(outString_, "-readoutraw");
+	            else
+	              strcpy(outString_, "-readout");
+	            
+            	status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray,
+            						    nread_expect, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
 
-            // printf("Acquisition start - expect %d\n",nread_expect);
-	    do {
-	      nread=0;
-	      strcpy(outString_, "-readoutraw");
-      	      status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray,
-      						    nread_expect, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+                    // printf("nread = %d\n", nread);
+	            if(nread == nread_expect)
+		          {
+		            this->lock();
+		            dataOK = dataCallback(detArray);
+		            this->unlock();
+		            if (!dataOK)
+		              {
+		              if (!retry--)
+              		      printf("Acquisition done\n");
+		              }
+		            else
+		              retry = 2;
+		          }
+	            else
+		            retry--;
 
-              // printf("nread = %d\n", nread);
-	      if(nread == nread_expect)
-		{
-		  this->lock();
-		  dataOK = dataCallback(detArray);
-		  this->unlock();
-		  if (!dataOK)
-		    {
-		    if (!retry--)
-    		      printf("Acquisition done\n");
-		    }
-		  else
-		    retry = 2;
-		}
-	      else
-		retry--;
-
-	      if(status != asynSuccess)
-		{
-		  asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-			    "%s:%s: error using readout command status=%d, nRead=%d, eomReason=%d\n",
-			    driverName, functionName, status, (int)nread, eomReason);
-		}
-	    } while (status == asynSuccess && retry && acquiring_);
-	    this->lock();
+	            if(status != asynSuccess)
+		          {
+		            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+			              "%s:%s: error using readout command status=%d, nRead=%d, eomReason=%d\n",
+			              driverName, functionName, status, (int)nread, eomReason);
+		          }
+	          } 
+	        while (status == asynSuccess && retry && acquiring_);
+	        this->lock();
         }
 
         printf("Acquisition finish\n");
@@ -1047,7 +1061,10 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
     status |= setIntegerParam(function, value);
 
     if (function == ADAcquire)
-        status |= setAcquire(value);
+    {
+      getIntegerParam(SDReadMode, &readmode_);
+      status |= setAcquire(value);
+    }
     else 
       {
 	if (function == SDSetting) {
@@ -1241,6 +1258,7 @@ mythen::mythen(const char *portName, const char *IPPortName,
     createParam(SDTauString,            asynParamFloat64,  &SDTau); 
     createParam(SDNModulesString,      asynParamInt32,  &SDNModules); 
     createParam(SDFirmwareVersionString,  asynParamOctet, &SDFirmwareVersion);
+    createParam(SDReadModeString,  asynParamInt32, &SDReadMode);
 
     status =  setStringParam (ADManufacturer, "Dectris");
     status |= setStringParam (ADModel,        "Mythen");
