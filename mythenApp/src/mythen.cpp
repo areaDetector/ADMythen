@@ -143,7 +143,7 @@ public:
     epicsInt32 chanperline_, nbits_;
     epicsInt32 nmodules;
     char *IPPortName_;
-    char *firmwareVersion_;
+    char firmwareVersion_[7];
     char outString_[MAX_COMMAND_LEN];
     char inString_[MAX_COMMAND_LEN];
     asynStatus sendCommand();
@@ -195,7 +195,7 @@ asynStatus mythen::writeReadMeter()
 	    if (strcmp(outString_,"-get version")==0)
 	    {
 	      status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_),
-		            inString_, sizeof(temp), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+		            firmwareVersion_, sizeof(firmwareVersion_), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
 	    }
 	    else
 	    {
@@ -345,8 +345,11 @@ asynStatus mythen::setKthresh(epicsFloat64 value)
 /** Sets the energy threshold for the module **/
 asynStatus mythen::setEnergy(epicsFloat64 value)
 {
+	
 	epicsInt32 i;
-    asynStatus status = asynSuccess;
+  asynStatus status = asynSuccess;
+  if ((int)firmwareVersion_[1]%48 >=3)
+  {
     for(i=0;i<this->nmodules;i++)
     {
 		epicsSnprintf(outString_, sizeof(outString_), "-module %d",i);
@@ -360,6 +363,7 @@ asynStatus mythen::setEnergy(epicsFloat64 value)
             "error check if value > 0 (outString = %s)",outString_);
         return asynError;
     }
+  }
 	return status;
 }
 
@@ -447,6 +451,7 @@ asynStatus mythen::getFirmware()
     epicsSnprintf(outString_, sizeof(outString_), "-get version");
     writeReadMeter();
     //epicsSnprintf(inString_, sizeof(inString_), "");
+    
     return status;
 }
 
@@ -536,19 +541,48 @@ asynStatus mythen::loadSettings(epicsInt32 value)
 		switch(value){
 			//Cu
 			case 0:
-				epicsSnprintf(outString_, sizeof(outString_), "-settings Cu");
+			  if ((int)firmwareVersion_[1]%48 >=3)
+          {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings Cu");
+				  }
+				else
+				  {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings StdCu");
+				  }
 				break;
 
 			//Mo
 			case 1:
-				epicsSnprintf(outString_, sizeof(outString_), "-settings Mo");
+				
+				if ((int)firmwareVersion_[1]%48 >=3)
+          {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings Mo");
+				  }
+				else
+				  {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings StdMo");
+				  }
 				break;
 
 			//Ag
+			//Not supported on firmware verions less than 3
 			case 2:
 				epicsSnprintf(outString_, sizeof(outString_), "-settings Ag");
 				break;
-
+				
+			// Cr
+      case 3:
+				
+				if ((int)firmwareVersion_[1]%48 >=3)
+          {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings Cr");
+				  }
+				else
+				  {
+				    epicsSnprintf(outString_, sizeof(outString_), "-settings HgCr");
+				  }
+				break;
+				
 			default:
 				epicsSnprintf(outString_, sizeof(outString_), "-reset");
 				break;
@@ -596,9 +630,9 @@ asynStatus mythen::getSettings()
 
     if (acquiring_)
       {
-	strcpy(outString_,"Called during Acquire");
-	inString_[0] = NULL;
-	goto error;
+	      strcpy(outString_,"Called during Acquire");
+	      inString_[0] = NULL;
+	      goto error;
       }
     //    prevAcquiring = acquiring_;
     //    if (prevAcquiring) setAcquire(0);
@@ -640,12 +674,7 @@ asynStatus mythen::getSettings()
     else goto error;
     setDoubleParam(ADAcquireTime,DetTime);
 
-    strcpy(outString_, "-get delafter");
-    writeReadMeter();
-    aux=*((long*)this->inString_);
-    if (aux >= 0) DetTime = (aux * (1E-7));
-    else goto error;
-    setDoubleParam(SDDelayTime,DetTime);
+    
 
     strcpy(outString_, "-get frames");
     writeReadMeter();
@@ -658,11 +687,7 @@ asynStatus mythen::getSettings()
     if (faux == -1 || faux > 0) setDoubleParam(SDTau,faux);
     else goto error;
 
-    strcpy(outString_, "-get energy");
-    writeReadMeter();
-    faux=*((epicsFloat32*)this->inString_);
-    if (faux < 0) goto error;
-    else setDoubleParam(SDEnergy,faux);
+    
 
     strcpy(outString_, "-get kthresh");
     writeReadMeter();
@@ -670,25 +695,45 @@ asynStatus mythen::getSettings()
     if (faux < 0) goto error;
     else setDoubleParam(SDThreshold,faux);
 
-    /* Get trigger modes */
-    strcpy(outString_, "-get conttrig");
-    writeReadMeter();
-    aux=*((int*)this->inString_);
-    if (aux < 0) goto error;
-    if (aux == 1) 
-	setIntegerParam(SDTrigger, 2);
-    else 
-      {
-      	strcpy(outString_, "-get trig");
-	writeReadMeter();
-       	aux=*((int*)this->inString_);
-	if (aux < 0) goto error;
-	if (aux == 1)
-	  setIntegerParam(SDTrigger, 1);
-	else
-	  setIntegerParam(SDTrigger, 0);
-      }
-
+    
+      
+      
+    //Firmware greater than 3 commands  
+    if ((int)firmwareVersion_[1]%48 >=3)
+    {
+      strcpy(outString_, "-get energy");
+      writeReadMeter();
+      faux=*((epicsFloat32*)this->inString_);
+      if (faux < 0) goto error;
+      else setDoubleParam(SDEnergy,faux);
+      
+      strcpy(outString_, "-get delafter");
+      writeReadMeter();
+      aux=*((long*)this->inString_);
+      if (aux >= 0) DetTime = (aux * (1E-7));
+      else goto error;
+      setDoubleParam(SDDelayTime,DetTime);
+      
+      
+      /* Get trigger modes */
+      strcpy(outString_, "-get conttrig");
+      writeReadMeter();
+      aux=*((int*)this->inString_);
+      if (aux < 0) goto error;
+      if (aux == 1) 
+	      setIntegerParam(SDTrigger, 2);
+      else 
+        {
+        	strcpy(outString_, "-get trig");
+	        writeReadMeter();
+         	aux=*((int*)this->inString_);
+	        if (aux < 0) goto error;
+	        if (aux == 1)
+	          setIntegerParam(SDTrigger, 1);
+	        else
+	          setIntegerParam(SDTrigger, 0);
+        }
+    }
 
     callParamCallbacks();
     // if (prevAcquiring) setAcquire(1);
