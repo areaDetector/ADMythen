@@ -906,8 +906,11 @@ epicsInt32 mythen::dataCallback(epicsInt32 *pData)
     epicsTimeGetCurrent(&timeStamp); 
 
     /* Allocate a new image buffer */
-    pImage = this->pNDArrayPool->alloc(ndims, dims, NDInt32, totalBytes, NULL); 
-    decodeRawReadout(this->nmodules, this->nbits_, pData, (int *)pImage->pData);
+    pImage = this->pNDArrayPool->alloc(ndims, dims, NDInt32, totalBytes, NULL);
+    if (readmode_==0)
+      decodeRawReadout(this->nmodules, this->nbits_, pData, (int *)pImage->pData);
+    else
+      decodeRawReadout(this->nmodules, 24, pData, (int *)pImage->pData);
     //    memcpy(pImage->pData,  pData, totalBytes); 
     pImage->dataType = NDUInt32;
     pImage->ndims = ndims; 
