@@ -1,11 +1,11 @@
 
 file {
-	name="/net/s9dserv/xorApps/epics/AD_2_2/ioc/mythenV3/mythenV3App/op/mythenV3.adl"
+	name="/local/DPbin/epics/epics_2015-08-31/synApps_5_8/support/areaDetector-2-2/ADMythen-R0-1/mythenApp/op/adl/mythen.adl"
 	version=030107
 }
 display {
 	object {
-		x=-20
+		x=10
 		y=222
 		width=1291
 		height=672
@@ -170,7 +170,7 @@ text {
 text {
 	object {
 		x=15
-		y=395
+		y=390
 		width=130
 		height=20
 	}
@@ -183,7 +183,7 @@ text {
 "text update" {
 	object {
 		x=155
-		y=396
+		y=391
 		width=61
 		height=18
 	}
@@ -199,7 +199,7 @@ text {
 "text update" {
 	object {
 		x=248
-		y=396
+		y=391
 		width=61
 		height=18
 	}
@@ -225,7 +225,7 @@ composite {
 composite {
 	object {
 		x=179
-		y=370
+		y=365
 		width=103
 		height=20
 	}
@@ -234,7 +234,7 @@ composite {
 		text {
 			object {
 				x=179
-				y=370
+				y=365
 				width=10
 				height=20
 			}
@@ -247,7 +247,7 @@ composite {
 		text {
 			object {
 				x=272
-				y=370
+				y=365
 				width=10
 				height=20
 			}
@@ -784,7 +784,7 @@ text {
 text {
 	object {
 		x=41
-		y=516
+		y=511
 		width=160
 		height=20
 	}
@@ -797,7 +797,7 @@ text {
 "text entry" {
 	object {
 		x=206
-		y=516
+		y=511
 		width=60
 		height=20
 	}
@@ -812,7 +812,7 @@ text {
 "text update" {
 	object {
 		x=240
-		y=604
+		y=599
 		width=90
 		height=18
 	}
@@ -828,7 +828,7 @@ text {
 text {
 	object {
 		x=16
-		y=603
+		y=598
 		width=120
 		height=20
 	}
@@ -919,7 +919,7 @@ menu {
 text {
 	object {
 		x=16
-		y=575
+		y=570
 		width=120
 		height=20
 	}
@@ -932,7 +932,7 @@ text {
 menu {
 	object {
 		x=144
-		y=575
+		y=570
 		width=90
 		height=20
 	}
@@ -945,7 +945,7 @@ menu {
 "text update" {
 	object {
 		x=240
-		y=576
+		y=571
 		width=90
 		height=18
 	}
@@ -961,7 +961,7 @@ menu {
 text {
 	object {
 		x=20
-		y=544
+		y=539
 		width=180
 		height=20
 	}
@@ -974,7 +974,7 @@ text {
 "text entry" {
 	object {
 		x=206
-		y=544
+		y=539
 		width=60
 		height=20
 	}
@@ -989,7 +989,7 @@ text {
 text {
 	object {
 		x=15
-		y=439
+		y=434
 		width=130
 		height=20
 	}
@@ -1002,7 +1002,7 @@ text {
 "text update" {
 	object {
 		x=156
-		y=420
+		y=415
 		width=61
 		height=18
 	}
@@ -1018,7 +1018,7 @@ text {
 "text update" {
 	object {
 		x=249
-		y=420
+		y=415
 		width=61
 		height=18
 	}
@@ -1034,7 +1034,7 @@ text {
 "text entry" {
 	object {
 		x=155
-		y=440
+		y=435
 		width=60
 		height=20
 	}
@@ -1049,7 +1049,7 @@ text {
 "text entry" {
 	object {
 		x=248
-		y=440
+		y=435
 		width=60
 		height=20
 	}
@@ -1064,7 +1064,7 @@ text {
 text {
 	object {
 		x=15
-		y=486
+		y=481
 		width=130
 		height=20
 	}
@@ -1077,7 +1077,7 @@ text {
 "text entry" {
 	object {
 		x=155
-		y=487
+		y=482
 		width=60
 		height=20
 	}
@@ -1092,7 +1092,7 @@ text {
 "text entry" {
 	object {
 		x=248
-		y=487
+		y=482
 		width=60
 		height=20
 	}
@@ -1107,7 +1107,7 @@ text {
 "text update" {
 	object {
 		x=248
-		y=467
+		y=462
 		width=61
 		height=18
 	}
@@ -1123,7 +1123,7 @@ text {
 "text update" {
 	object {
 		x=155
-		y=467
+		y=462
 		width=61
 		height=18
 	}
@@ -1139,7 +1139,7 @@ text {
 text {
 	object {
 		x=16
-		y=634
+		y=624
 		width=120
 		height=20
 	}
@@ -1152,7 +1152,7 @@ text {
 "text update" {
 	object {
 		x=143
-		y=635
+		y=625
 		width=90
 		height=18
 	}
@@ -1213,7 +1213,7 @@ text {
 "text update" {
 	object {
 		x=271
-		y=518
+		y=513
 		width=63
 		height=18
 	}
@@ -1229,7 +1229,7 @@ text {
 "text update" {
 	object {
 		x=270
-		y=544
+		y=539
 		width=63
 		height=18
 	}
@@ -1474,7 +1474,7 @@ menu {
 menu {
 	object {
 		x=142
-		y=603
+		y=598
 		width=90
 		height=20
 	}
@@ -1569,4 +1569,32 @@ menu {
 	y1_axis {
 		rangeStyle="auto-scale"
 	}
+}
+"text update" {
+	object {
+		x=144
+		y=645
+		width=160
+		height=18
+	}
+	monitor {
+		chan="$(P)$(R)FirmwareVersion"
+		clr=54
+		bclr=4
+	}
+	limits {
+	}
+}
+text {
+	object {
+		x=86
+		y=644
+		width=50
+		height=20
+	}
+	"basic attribute" {
+		clr=14
+	}
+	textix="Firmware Vers."
+	align="horiz. right"
 }
