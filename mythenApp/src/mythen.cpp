@@ -1246,7 +1246,7 @@ mythen::mythen(const char *portName, const char *IPPortName,
     status |= setStringParam (ADModel,        "Mythen");
     
     status |= getFirmware();
-    status |= setStringParam (SDFirmwareVersion, inString_);
+    status |= setStringParam (SDFirmwareVersion, firmwareVersion_);
     
     int sensorSizeX = MAX_DIMS;
     int  sensorSizeY = 1;
