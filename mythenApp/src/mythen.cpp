@@ -1,6 +1,6 @@
-/* mythenV3.cpp
+/* mythen.cpp
  *
- * This is a driver for Dextris Mythen V3 Detector. 
+ * This is a driver for Dextris Mythen Detector. 
  *
  * Based on the slsDetector driver by Xiaoqiang Wang (PSI) - June 8, 2012
  * Based on the asynPort driver from LNLS 
@@ -13,6 +13,7 @@
  * Modified: 
  *            2015-07-14  M. Moore ANL - APS/XSD/DET: Upated to work with other firmwares 
  *            2015-07-14  M. Moore ANL - APS/XSD/DET: Added ReadMode to allow Reading of corrected data from Detector
+ *            2015-07-15  M. Moore ANL - APS/XSD/DET: Modified acquire sequence to handle trigger time outs
  *
  */
  
@@ -49,6 +50,7 @@
 #define MAX_NMODULES 2
 #define M1K_TIMEOUT 5.0
 #define MAX_FRAMES 500
+#define MAX_TRIGGER_TIMEOUT_COUNT 50
 
 static const char *driverName = "mythen";
 
@@ -228,12 +230,16 @@ asynStatus mythen::setAcquire(epicsInt32 value)
       //            if (status) break;
       status = pasynOctetSyncIO->writeRead(pasynUserMeter_, "-stop", strlen(outString_),
 					   inString_, sizeof(epicsInt32), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+			setIntegerParam(ADStatus, getStatus());
 	    //            if (status == asynSuccess || status == asynTimeout) break;
 	    //        }
       acquiring_ = 0;
     } else {
     	if(!(acquiring_))
     	{
+    	
+    	  //TODO: add something to check for single acquire and get up for that and revert after 
+    	   
 	      strcpy(outString_,"-start");
 	      this->sendCommand();
 	      // Notify the read thread that acquisition has started
@@ -469,20 +475,42 @@ epicsInt32 mythen::getStatus()
     aux=*((int*)this->inString_);
     int m_status =  aux & 1;          // Acquire running status (non-zero)
     int t_status = aux & (1<<3);      // Waiting for trigger (non-zero)        
-    int d_status = aux & (1<<16);     // Data Available (zero)
-
-     if (!d_status) 
-       detStatus = ADStatusReadout;
-     else if (m_status)
-       {
-       if (t_status)
-	 detStatus = ADStatusWaiting;
-       else
-	 detStatus = ADStatusAcquire;
-       }
-     else
-       detStatus = ADStatusIdle;
-
+    int d_status = aux & (1<<16);     // No Data Available when not zero
+    int triggerWaitCnt=0;
+    double triggerWait;
+    
+    //printf("Mythen Status - M:%d\tT:%d\tD:%d\n",m_status,t_status, d_status);
+    
+    if (m_status || !d_status )
+    { 
+      
+      detStatus = ADStatusAcquire;
+      
+      triggerWaitCnt=0;
+      //Waits for Trigger for increaseing amount of time for a total of almost 1 minute
+      while ((t_status ) && (triggerWaitCnt<MAX_TRIGGER_TIMEOUT_COUNT))
+      {
+        triggerWait = 0.0001*pow(10.0,((double)(triggerWaitCnt/10)+1));
+        //Wait
+        epicsThreadSleep(triggerWait);
+        //Check again
+        strcpy(outString_, "-get status");
+        writeReadMeter();
+        aux=*((int*)this->inString_);
+        t_status = aux & (1<<3);       
+        d_status = aux & (1<<16);     
+        triggerWaitCnt++;
+        
+      }
+      
+      if (!d_status)
+        detStatus = ADStatusReadout;
+      if (triggerWaitCnt==MAX_TRIGGER_TIMEOUT_COUNT)
+        detStatus = ADStatusError;
+    }
+    else
+      detStatus = ADStatusIdle;
+    
     return detStatus;
 }
 
@@ -801,19 +829,22 @@ void mythen::acquisitionTask()
     epicsInt32 detArray[this->nmodules*1280];
     asynStatus status = asynSuccess;
     int dataOK, retry;
+    double triggerWait = 0.001;
+    int triggerWaitCnt = 0;
 
     static const char *functionName = "acquisitionTask";
     this->lock(); 
 
-    while (1) {
+    while (1) 
+    {
         /* Is acquisition active? */
         getIntegerParam(ADAcquire, &acquire);
-        
-        
         
         /* If we are not acquiring then wait for a semaphore that is given when acquisition is started */
         if (!acquire || !acquiring_) 
         {
+            
+            triggerWaitCnt = 0;
             
             setIntegerParam(ADStatus, ADStatusIdle);
             callParamCallbacks();
@@ -825,6 +856,9 @@ void mythen::acquisitionTask()
             // setStringParam(ADStatusMessage, "Acquiring data");
             // setIntegerParam(ADNumImagesCounter, 0);
 	          // getIntegerParam(ADAcquire, &acquire);
+	          
+	              
+	          //printf("Read Mode: %d\tnModules: %d\t chanperline: %d\n", readmode_,this->nmodules,chanperline_);
             if (readmode_==0)       //Raw Mode
 	            nread_expect = sizeof(epicsInt32)*this->nmodules*(1280/chanperline_);
 	          else
@@ -832,53 +866,82 @@ void mythen::acquisitionTask()
 	            
 	          dataOK = 1;
 	          retry = 2;
-
-                  // printf("Acquisition start - expect %d\n",nread_expect);
-	          do {
-	            nread=0;
-	            if (readmode_==0)
-	              strcpy(outString_, "-readoutraw");
-	            else
-	              strcpy(outString_, "-readout");
+	          
+	          eventStatus = getStatus();
+	          setIntegerParam(ADStatus, eventStatus);
+	          
+	          if (eventStatus!=ADStatusError)
+	          {
+	            //TODO: add something to handle exposures greater than timeout (ie 5 seconds)
 	            
-            	status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray,
-            						    nread_expect, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+	            
+              // printf("Acquisition start - expect %d\n",nread_expect);
+              // Work on the cases of what are you getting from getstatus
+              do {
+                nread=0;
+                if (readmode_==0)
+                  strcpy(outString_, "-readoutraw");
+                else
+                  strcpy(outString_, "-readout");
+                
+              	status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray,
+              						    nread_expect, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
 
-                    // printf("nread = %d\n", nread);
-	            if(nread == nread_expect)
-		          {
-		            this->lock();
-		            dataOK = dataCallback(detArray);
-		            this->unlock();
-		            if (!dataOK)
-		              {
-		              if (!retry--)
-              		      printf("Acquisition done\n");
-		              }
-		            else
-		              retry = 2;
-		          }
-	            else
-		            retry--;
-
-	            if(status != asynSuccess)
-		          {
-		            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-			              "%s:%s: error using readout command status=%d, nRead=%d, eomReason=%d\n",
-			              driverName, functionName, status, (int)nread, eomReason);
-		          }
-	          } 
-	        while (status == asynSuccess && retry && acquiring_);
-	        this->lock();
+                //printf("nread_expected = %d\tnread = %d\n", nread_expect,nread);
+                
+                if(nread == nread_expect)
+	              {
+	                this->lock();
+	                dataOK = dataCallback(detArray);
+	                this->unlock();
+	                if (!dataOK)
+	                  {
+	                    eventStatus = getStatus();
+	                    setIntegerParam(ADStatus, eventStatus);
+	                  }
+	                
+	              }
+                else
+                {
+	                eventStatus = getStatus();
+	                setIntegerParam(ADStatus, eventStatus);
+                  //printf("Data not size expected ADStatus: %d\n",eventStatus);
+                }
+                if(status != asynSuccess)
+	              {
+	                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+		                  "%s:%s: error using readout command status=%d, nRead=%d, eomReason=%d\n",
+		                  driverName, functionName, status, (int)nread, eomReason);
+	              }
+              } 
+            while (status == asynSuccess && (eventStatus==ADStatusAcquire||eventStatus==ADStatusReadout) && acquiring_);
+             
+           }
+           this->lock();
+	        
         }
-
-        printf("Acquisition finish\n");
-        getIntegerParam(ADImageMode, &imageMode);
-        if (imageMode == ADImageSingle || imageMode == ADImageMultiple) {
-	    printf("ADAcquire Callback\n");
-	    acquiring_ = 0;
+        if (eventStatus!=ADStatusError )
+        {
+          printf("Acquisition finish\n");
+          getIntegerParam(ADImageMode, &imageMode);
+          if (imageMode == ADImageSingle || imageMode == ADImageMultiple)
+          {
+	          printf("ADAcquire Callback\n");
+	          acquiring_ = 0;
             setIntegerParam(ADAcquire,  0); 
             callParamCallbacks(); 
+          }
+        }
+        else
+        {
+          //Abort read 
+          asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s:%s: error timed out waiting for data\n",
+                driverName, functionName);
+          acquiring_ = 0;
+	        setAcquire(0);
+          setIntegerParam(ADAcquire,  0); 
+          callParamCallbacks(); 
         }
     }
 }
