@@ -237,6 +237,9 @@ asynStatus mythen::setAcquire(epicsInt32 value)
     } else {
     	if(!(acquiring_))
     	{
+    	
+    	  //TODO: add something to check for single acquire and get up for that and revert after 
+    	   
 	      strcpy(outString_,"-start");
 	      this->sendCommand();
 	      // Notify the read thread that acquisition has started
@@ -869,6 +872,8 @@ void mythen::acquisitionTask()
 	          
 	          if (eventStatus!=ADStatusError)
 	          {
+	            //TODO: add something to handle exposures greater than timeout (ie 5 seconds)
+	            
 	            
               // printf("Acquisition start - expect %d\n",nread_expect);
               // Work on the cases of what are you getting from getstatus
