@@ -923,7 +923,6 @@ void mythen::acquisitionTask()
           {
 	          printf("ADAcquire Callback\n");
 	          acquiring_ = 0;
-	          setAcquire(0);
             setIntegerParam(ADAcquire,  0); 
             callParamCallbacks(); 
           }
@@ -934,7 +933,8 @@ void mythen::acquisitionTask()
           asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error timed out waiting for data\n",
                 driverName, functionName);
-		       
+          acquiring_ = 0;
+	        setAcquire(0);
           setIntegerParam(ADAcquire,  0); 
           callParamCallbacks(); 
         }
