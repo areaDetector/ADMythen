@@ -1,4 +1,3 @@
-#!/bin/csh
-#medm -x -macro "P=9IDM1K:, R=cam1:" mythenV3.adl &
+#!/bin/bash
 ../../bin/linux-x86_64/mythenApp st.cmd
 

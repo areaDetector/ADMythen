@@ -1,8 +1,3 @@
 #!/bin/bash
 
-export EPICS_CA_MAX_ARRAY_BYTES=30000000
-source /local/DPbin/Scripts/Paths.bash
-export EPICS_DISPLAY_PATH=$EPICS_SUPPORT/adls/:$EPICS_SUPPORT/areaDetector-2-2/ADMythen-R0-1/mythenApp/op/adl/
-
-echo $EPICS_DISPLAY_PATH
 medm -x -macro "P="$1":, R=cam1: " mythen.adl &
