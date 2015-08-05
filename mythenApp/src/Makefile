@@ -5,7 +5,7 @@ include $(TOP)/configure/CONFIG
 #=============================
 
 
-LIBRARY_IOC_Linux += mythen
+LIBRARY_IOC += mythen
 LIB_SRCS += mythen.cpp
 
 
