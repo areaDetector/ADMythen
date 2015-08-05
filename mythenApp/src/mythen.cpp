@@ -388,7 +388,7 @@ asynStatus mythen::setEnergy(epicsFloat64 value)
 asynStatus mythen::setExposureTime(epicsFloat64 value)
 {
     asynStatus status;
-    int hns = (int)(value * (1E+7));
+    long long hns = (long long)(value * (1E+7));
     epicsSnprintf(outString_, sizeof(outString_), "-time %d", hns);
     status = sendCommand();
     return status;
