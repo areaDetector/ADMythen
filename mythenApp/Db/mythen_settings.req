@@ -1,0 +1,18 @@
+file "ADBase_settings.req", P=$(P), R=$(R)
+file "NDFile_settings.req", P=$(P), R=$(R)
+$(P)$(R)Setting
+$(P)$(R)BeamEnergy
+$(P)$(R)ThresholdEnergy
+$(P)$(R)UseFlatField
+$(P)$(R)UseCountRate
+$(P)$(R)Tau
+$(P)$(R)UseBadChanIntrpl
+$(P)$(R)BitDepth
+$(P)$(R)TriggerMode
+$(P)$(R)DelayTime
+$(P)$(R)UseGates
+$(P)$(R)NumGates
+$(P)$(R)NumCycles
+$(P)$(R)NumFrames
+$(P)$(R)ReadMode
+

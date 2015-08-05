@@ -1,7 +1,6 @@
 bin
 lib
 include
-db
 dbd
 *_BAK.adl
 documentation.html
