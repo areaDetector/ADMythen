@@ -14,6 +14,8 @@
  *            2015-07-14  M. Moore ANL - APS/XSD/DET: Upated to work with other firmwares 
  *            2015-07-14  M. Moore ANL - APS/XSD/DET: Added ReadMode to allow Reading of corrected data from Detector
  *            2015-07-15  M. Moore ANL - APS/XSD/DET: Modified acquire sequence to handle trigger time outs
+ *            2015-08-05  M. Moore ANL - APS/XSD/DET: Changed how readout timeouts are handled to be timeout+acquiretime
+ *                                                    Handles ImageMode correctly, so that if you have single acquire it only acquires one image
  *
  */
  
@@ -237,9 +239,7 @@ asynStatus mythen::setAcquire(epicsInt32 value)
     } else {
     	if(!(acquiring_))
     	{
-    	
-    	  //TODO: add something to check for single acquire and get up for that and revert after 
-    	   
+    	    	  
 	      strcpy(outString_,"-start");
 	      this->sendCommand();
 	      // Notify the read thread that acquisition has started
@@ -262,8 +262,16 @@ asynStatus mythen::setAcquire(epicsInt32 value)
 asynStatus mythen::setFrames(epicsInt32 value)
 {
     asynStatus status;
-
-    epicsSnprintf(outString_, sizeof(outString_), "-frames %d", value);
+    epicsInt32 imageMode;
+    getIntegerParam(ADImageMode, &imageMode);
+    if (imageMode ==0)  //checks if it is in single acquire mode
+    {
+      epicsSnprintf(outString_, sizeof(outString_), "-frames %d", 1);
+    }
+    else
+    {
+      epicsSnprintf(outString_, sizeof(outString_), "-frames %d", value);
+    }
     status = sendCommand();
 
     // Save frame count for acquition    
@@ -827,6 +835,7 @@ void mythen::acquisitionTask()
     int imageMode;
     epicsInt32 acquire, eomReason;
     epicsInt32 detArray[this->nmodules*1280];
+    double acquireTime;
     asynStatus status = asynSuccess;
     int dataOK, retry;
     double triggerWait = 0.001;
@@ -872,9 +881,8 @@ void mythen::acquisitionTask()
 	          
 	          if (eventStatus!=ADStatusError)
 	          {
-	            //TODO: add something to handle exposures greater than timeout (ie 5 seconds)
-	            
-	            
+	            	            
+	            getDoubleParam(ADAcquireTime,&acquireTime);
               // printf("Acquisition start - expect %d\n",nread_expect);
               // Work on the cases of what are you getting from getstatus
               do {
@@ -885,7 +893,7 @@ void mythen::acquisitionTask()
                   strcpy(outString_, "-readout");
                 
               	status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray,
-              						    nread_expect, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+              						    nread_expect, M1K_TIMEOUT+acquireTime, &nwrite, &nread, &eomReason);  //Timeout is M1K_TIMEOUT + AcquireTime
 
                 //printf("nread_expected = %d\tnread = %d\n", nread_expect,nread);
                 
@@ -1153,6 +1161,10 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
 	  status |= setTrigger(value);
 	} else if (function == SDReset) {
 	  status |= setReset();
+	} else if (function == ADImageMode) {
+	
+	  //getIntegerParam(SDNumFrames, &frames_);
+	  status |= setFrames(frames_);
 	} else {
 	  /* If this is not a parameter we have handled call the base class */
 	  if (function < FIRST_SD_PARAM) status = ADDriver::writeInt32(pasynUser, value);
