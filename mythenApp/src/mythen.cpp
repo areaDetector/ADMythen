@@ -155,6 +155,8 @@ public:
     char outString_[MAX_COMMAND_LEN];
     char inString_[MAX_COMMAND_LEN];
     bool isBigEndian_;
+    epicsInt32 *detArray_;
+    epicsUInt32 *tmpArray_;
     asynStatus sendCommand();
     asynStatus writeReadMeter();
     epicsInt32 stringToInt32(char *str);
@@ -841,7 +843,6 @@ void mythen::acquisitionTask()
     int eventStatus;
     int imageMode;
     epicsInt32 acquire, eomReason;
-    epicsInt32 detArray[this->nmodules*1280];
     double acquireTime;
     asynStatus status = asynSuccess;
     int dataOK;
@@ -890,14 +891,14 @@ void mythen::acquisitionTask()
                 else
                   strcpy(outString_, "-readout");
 
-                status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray,
+                status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray_,
                                         nread_expect, M1K_TIMEOUT+acquireTime, &nwrite, &nread, &eomReason);  //Timeout is M1K_TIMEOUT + AcquireTime
 
                 //printf("nread_expected = %d\tnread = %d\n", nread_expect,nread);
 
                 if(nread == nread_expect) {
                     this->lock();
-                    dataOK = dataCallback(detArray);
+                    dataOK = dataCallback(detArray_);
                     this->unlock();
                     if (!dataOK) {
                         eventStatus = getStatus();
@@ -1044,13 +1045,12 @@ void mythen::decodeRawReadout(int nmods, int nbits, int *data, int *result)
   }
 
   int size = 1280/chanperline*nmods;
-  u_int32_t tmpArray[size]; // the data has to interpreted
-  memcpy(tmpArray, data, size*sizeof(int)); // unsigned int32
+  memcpy(tmpArray_, data, size*sizeof(int)); // unsigned int32
   for (int j = 0; j < chanperline; j++) {
       int shift = nbits*j;
       int shiftedMask = mask<<shift;
       for (int i = 0; i < size; i++) {
-        result[i*chanperline+j]=((tmpArray[i]&shiftedMask)>>shift)&mask;
+        result[i*chanperline+j]=((tmpArray_[i]&shiftedMask)>>shift)&mask;
     }
   }
 }
@@ -1109,7 +1109,7 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
     static const char *functionName = "writeInt32";
 
     /* Reject any call to the detector if it is running */
-    if (function != ADAcquire and acquiring_) {
+    if ((function != ADAcquire) && acquiring_) {
         asynPrint(this->pasynUserSelf, ASYN_TRACE_ERROR, 
         "%s:%s: detector is busy\n", driverName, functionName);
         return asynError;
@@ -1306,23 +1306,23 @@ mythen::mythen(const char *portName, const char *IPPortName,
         return;
     }
 
-    createParam(SDSettingString,        asynParamInt32,  &SDSetting); 
-    createParam(SDDelayTimeString,      asynParamFloat64,  &SDDelayTime); 
-    createParam(SDThresholdString,      asynParamFloat64, &SDThreshold); 
-    createParam(SDEnergyString,         asynParamFloat64, &SDEnergy); 
-    createParam(SDUseFlatFieldString,   asynParamInt32,  &SDUseFlatField); 
-    createParam(SDUseCountRateString,   asynParamInt32,  &SDUseCountRate); 
-    createParam(SDUseBadChanIntrplString,   asynParamInt32,  &SDUseBadChanIntrpl);
-    createParam(SDBitDepthString,       asynParamInt32,  &SDBitDepth); 
-    createParam(SDUseGatesString,       asynParamInt32,  &SDUseGates); 
-    createParam(SDNumGatesString,       asynParamInt32,  &SDNumGates); 
-    createParam(SDNumFramesString,      asynParamInt32,  &SDNumFrames); 
-    createParam(SDTriggerString,        asynParamInt32,  &SDTrigger);
-    createParam(SDResetString,          asynParamInt32,  &SDReset);
-    createParam(SDTauString,            asynParamFloat64,  &SDTau); 
-    createParam(SDNModulesString,      asynParamInt32,  &SDNModules); 
-    createParam(SDFirmwareVersionString,  asynParamOctet, &SDFirmwareVersion);
-    createParam(SDReadModeString,  asynParamInt32, &SDReadMode);
+    createParam(SDSettingString,          asynParamInt32,   &SDSetting); 
+    createParam(SDDelayTimeString,        asynParamFloat64, &SDDelayTime); 
+    createParam(SDThresholdString,        asynParamFloat64, &SDThreshold); 
+    createParam(SDEnergyString,           asynParamFloat64, &SDEnergy); 
+    createParam(SDUseFlatFieldString,     asynParamInt32,   &SDUseFlatField); 
+    createParam(SDUseCountRateString,     asynParamInt32,   &SDUseCountRate); 
+    createParam(SDUseBadChanIntrplString, asynParamInt32,   &SDUseBadChanIntrpl);
+    createParam(SDBitDepthString,         asynParamInt32,   &SDBitDepth); 
+    createParam(SDUseGatesString,         asynParamInt32,   &SDUseGates); 
+    createParam(SDNumGatesString,         asynParamInt32,   &SDNumGates); 
+    createParam(SDNumFramesString,        asynParamInt32,   &SDNumFrames); 
+    createParam(SDTriggerString,          asynParamInt32,   &SDTrigger);
+    createParam(SDResetString,            asynParamInt32,   &SDReset);
+    createParam(SDTauString,              asynParamFloat64, &SDTau); 
+    createParam(SDNModulesString,         asynParamInt32,   &SDNModules); 
+    createParam(SDFirmwareVersionString,  asynParamOctet,   &SDFirmwareVersion);
+    createParam(SDReadModeString,         asynParamInt32,   &SDReadMode);
 
     status =  setStringParam (ADManufacturer, "Dectris");
     status |= setStringParam (ADModel,        "Mythen");
@@ -1372,6 +1372,8 @@ mythen::mythen(const char *portName, const char *IPPortName,
     }
     this->nmodules=aux;
     status |= setIntegerParam(SDNModules, aux);
+    detArray_ = (epicsInt32*) calloc(this->nmodules*1280, sizeof(epicsInt32));
+    tmpArray_ = (epicsUInt32*) calloc(this->nmodules*1280, sizeof(epicsInt32));
 
     callParamCallbacks();
 
