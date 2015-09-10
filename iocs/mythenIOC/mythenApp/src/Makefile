@@ -16,7 +16,7 @@ PROD_SRCS += $(PROD_NAME)_registerRecordDeviceDriver.cpp $(PROD_NAME)Main.cpp
 # Add locally compiled object code
 PROD_LIBS += mythen
 
-include $(ADCORE)/ADApp/commonDriverMakefile
+include $(ADEXAMPLE)/exampleApp/commonDriverMakefile
 $(PROD_NAME)_DBD += drvAsynIPPort.dbd
 
 #=============================
