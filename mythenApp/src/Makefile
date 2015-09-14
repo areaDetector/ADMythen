@@ -4,20 +4,13 @@ include $(TOP)/configure/CONFIG
 #  ADD MACRO DEFINITIONS AFTER THIS LINE
 #=============================
 
-
 LIBRARY_IOC += mythen
 LIB_SRCS += mythen.cpp
-
 
 # <name>.dbd will be created from <name>Include.dbd
 DBD += mythenSupport.dbd
 
-
-#include $(AREA_DETECTOR)/ADApp/commonDriverMakefile
-include $(ADCORE)/ADApp/commonDriverMakefile
-
-#PROD_LIBS += NDFileMagick
-#PROD_LIBS += GraphicsMagick++ GraphicsMagickWand GraphicsMagick
+include $(ADCORE)/ADApp/commonLibraryMakefile
 
 #=============================
 

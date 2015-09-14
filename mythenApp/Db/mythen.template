@@ -2,7 +2,6 @@
 # template for Dectris Mythen Driver
 
 include "ADBase.template"
-include "NDFile.template"
 
 #----------------------------------
 # Detector Setting
