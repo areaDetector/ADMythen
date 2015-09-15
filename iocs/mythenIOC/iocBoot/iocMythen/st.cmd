@@ -48,7 +48,7 @@ NDStdArraysConfigure("Image1", 3, 0, "$(PORT)", 0, 0)
 dbLoadRecords("$(ADCORE)/db/NDStdArrays.template", "P=$(PREFIX),R=image1:,PORT=Image1,ADDR=0,TIMEOUT=1,NDARRAY_PORT=$(PORT),NDARRAY_ADDR=0,TYPE=Float64,FTVL=DOUBLE,NELEMENTS=$(NCHANS)")
 
 # Load all other plugins using commonPlugins.cmd
-< $(ADEXAMPLE)/iocBoot/commonPlugins.cmd
+< $(ADCORE)/iocBoot/commonPlugins.cmd
 
 # Load asynRecord records on Mythen communication
 dbLoadRecords("$(ASYN)/db/asynRecord.db", "P=$(PREFIX),R=asyn_1,PORT=IP_M1K,ADDR=0,OMAX=256,IMAX=256")
