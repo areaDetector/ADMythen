@@ -483,7 +483,7 @@ asynStatus mythen::setUseGates(epicsInt32 value)
     return status;
 }
 
-/** Number of gates.. **/
+/** Number of gates. **/
 asynStatus mythen::setNumGates(epicsInt32 value)
 {
     asynStatus status;
@@ -1056,10 +1056,12 @@ void mythen::decodeRawReadout(int nmods, int nbits, int *data, int *result)
 }
 
 
-/** Called when asyn clients call pasynInt32->write().
+/** Called when asyn clients call pasynOctet->write().
   * For all parameters it sets the value in the parameter library and calls any registered callbacks..
   * \param[in] pasynUser pasynUser structure that encodes the reason and address.
-  * \param[in] value Value to write. */
+  * \param[in] value Value to write. 
+  * \param[in] nChars Number of characters to write 
+  * \param[out] nActual Number of characters actually written */
 asynStatus mythen::writeOctet(asynUser *pasynUser, const char *value,
                                             size_t nChars, size_t *nActual)
 {
