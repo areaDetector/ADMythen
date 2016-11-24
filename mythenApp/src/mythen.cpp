@@ -90,10 +90,7 @@ class mythen : public ADDriver {
                 size_t nChars, size_t *nActual);
         virtual void report(FILE *fp, int details); 
 
-        epicsInt32 dataCallback(epicsInt32 *pData); /* This should be private but is called from C so must be public */
-        void pollTask(); 
         void acquisitionTask(); 
-        void shutdown(); 
 
     protected:
         int SDSetting;
@@ -117,31 +114,46 @@ class mythen : public ADDriver {
         int SDNModules;
 #define LAST_SD_PARAM SDNModules
 
-        /* These are the methods we implement from Mythen */
-        virtual asynStatus setAcquire(epicsInt32 value);
-        virtual asynStatus setFCorrection(epicsInt32 value);
-        virtual asynStatus setRCorrection(epicsInt32 value);
-        virtual asynStatus setExposureTime(epicsFloat64 value);
-        virtual asynStatus setDelayAfterTrigger(epicsFloat64 value);
-        virtual asynStatus setBitDepth(epicsInt32 value);
-        virtual asynStatus setBadChanIntrpl(epicsInt32 value);
-        virtual asynStatus setUseGates(epicsInt32 value);
-        virtual asynStatus setNumGates(epicsInt32 value);
-        virtual asynStatus setKthresh(epicsFloat64 value);
-        virtual asynStatus setEnergy(epicsFloat64 value);
-        virtual asynStatus setTau(epicsFloat64 value);
-        virtual asynStatus setFrames(epicsInt32 value);
-        virtual asynStatus setFlip(epicsInt32 value);
-        virtual asynStatus setTrigger(epicsInt32 value);
-        virtual asynStatus loadSettings(epicsInt32 value);
-        virtual asynStatus setReset();
-        virtual asynStatus getSettings();
-        virtual epicsInt32  getStatus();
-        virtual asynStatus getFirmware();
-        void decodeRawReadout(int nmods, int nbits, int *data, int *result);
+    private:
+        enum SettingPreset {
+            SettingPreset_Cu = 0,
+            SettingPreset_Mo = 1,
+            SettingPreset_Ag = 2, //Not supported on firmware verions less than 3
+            SettingPreset_Cr = 3
+        };
+
 
     private:                                       
-        /* These are the methods that are new to this class */
+        /* These are the methods we implement from Mythen */
+        asynStatus setAcquire(epicsInt32 value);
+        asynStatus setFCorrection(epicsInt32 value);
+        asynStatus setRCorrection(epicsInt32 value);
+        asynStatus setExposureTime(epicsFloat64 value);
+        asynStatus setDelayAfterTrigger(epicsFloat64 value);
+        asynStatus setBitDepth(epicsInt32 value);
+        asynStatus setBadChanIntrpl(epicsInt32 value);
+        asynStatus setUseGates(epicsInt32 value);
+        asynStatus setNumGates(epicsInt32 value);
+        asynStatus setKthresh(epicsFloat64 value);
+        asynStatus setEnergy(epicsFloat64 value);
+        asynStatus setTau(epicsFloat64 value);
+        asynStatus setFrames(epicsInt32 value);
+        asynStatus setFlip(epicsInt32 value);
+        asynStatus setTrigger(epicsInt32 value);
+        asynStatus loadSettings(epicsInt32 value);
+        asynStatus setReset();
+        asynStatus getSettings();
+        epicsInt32 getStatus();
+        asynStatus getFirmware();
+        void decodeRawReadout(int nmods, int nbits, int *data, int *result);
+        asynStatus sendCommand();
+        asynStatus writeReadMeter();
+        epicsInt32 stringToInt32(char *str);
+        long long stringToInt64(char *str);
+        epicsFloat32 stringToFloat32(char *str);
+        void swap4(char* value);
+        void swap8(char* value);
+        epicsInt32 dataCallback(epicsInt32 *pData);
 
         /* Our data */
         epicsEventId startEventId_;
@@ -157,13 +169,6 @@ class mythen : public ADDriver {
         bool isBigEndian_;
         epicsInt32 *detArray_;
         epicsUInt32 *tmpArray_;
-        asynStatus sendCommand();
-        asynStatus writeReadMeter();
-        epicsInt32 stringToInt32(char *str);
-        long long stringToInt64(char *str);
-        epicsFloat32 stringToFloat32(char *str);
-        void swap4(char* value);
-        void swap8(char* value);
 };
 
 #define NUM_SD_PARAMS (&LAST_SD_PARAM - &FIRST_SD_PARAM + 1)
@@ -272,17 +277,10 @@ asynStatus mythen::setAcquire(epicsInt32 value)
     asynStatus status = asynSuccess;
     epicsInt32 eomReason;
     static const char *functionName = "setAcquire";
-    // printf("setAcquire %d\n",value);
     if (value == 0) {
-        //        while (1) {
-        //            // Repeat sending STOP until we get only a 0 back
-        //            status = pasynOctetSyncIO->setInputEos(pasynUserMeter_, "", 0);
-        //            if (status) break;
         status = pasynOctetSyncIO->writeRead(pasynUserMeter_, "-stop", strlen(outString_),
                 inString_, sizeof(epicsInt32), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
         setIntegerParam(ADStatus, getStatus());
-        //            if (status == asynSuccess || status == asynTimeout) break;
-        //        }
         acquiring_ = 0;
     } else {
         if(!(acquiring_)) {                 
@@ -294,10 +292,8 @@ asynStatus mythen::setAcquire(epicsInt32 value)
             acquiring_ = 1;
         }
     }
-    if (status) {
-        acquiring_ = 0;
-    }
     if(status != asynSuccess)
+        acquiring_ = 0;
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error!\n", driverName, functionName);
     return status;
@@ -375,7 +371,7 @@ asynStatus mythen::setKthresh(epicsFloat64 value)
 {
     epicsInt32 i;
     asynStatus status = asynSuccess;
-    for(i=0;i<this->nmodules;i++) {
+    for(i=0;i<this->nmodules;++i) {
         epicsSnprintf(outString_, sizeof(outString_), "-module %d",i);
         status = sendCommand();
         epicsSnprintf(outString_, sizeof(outString_), "-kthresh %f", value);
@@ -404,7 +400,7 @@ asynStatus mythen::setEnergy(epicsFloat64 value)
     epicsInt32 i;
     asynStatus status = asynSuccess;
     if ((int)firmwareVersion_[1]%48 >=3) {
-        for(i=0;i<this->nmodules;i++) {
+        for(i=0;i<this->nmodules;++i) {
             epicsSnprintf(outString_, sizeof(outString_), "-module %d",i);
             status = sendCommand();
             epicsSnprintf(outString_, sizeof(outString_), "-energy %f", value);
@@ -500,7 +496,6 @@ asynStatus mythen::getFirmware()
 
     epicsSnprintf(outString_, sizeof(outString_), "-get version");
     writeReadMeter();
-    //epicsSnprintf(inString_, sizeof(inString_), "");
 
     return status;
 }
@@ -520,8 +515,6 @@ epicsInt32 mythen::getStatus()
     int triggerWaitCnt=0;
     double triggerWait;
 
-    //printf("Mythen Status - M:%d\tT:%d\tD:%d\n",m_status,t_status, d_status);
-
     if (m_status || !d_status ) { 
         detStatus = ADStatusAcquire;
 
@@ -529,9 +522,7 @@ epicsInt32 mythen::getStatus()
         //Waits for Trigger for increaseing amount of time for a total of almost 1 minute
         while ((t_status ) && (triggerWaitCnt<MAX_TRIGGER_TIMEOUT_COUNT)) {
             triggerWait = 0.0001*pow(10.0,((double)(triggerWaitCnt/10)+1));
-            //Wait
             epicsThreadSleep(triggerWait);
-            //Check again
             strcpy(outString_, "-get status");
             writeReadMeter();
             aux = stringToInt32(this->inString_);
@@ -601,13 +592,12 @@ asynStatus mythen::loadSettings(epicsInt32 value)
     asynStatus status=asynSuccess;
     epicsInt32 i=0;
 
-    for(i=0;i<this->nmodules;i++) {
+    for(i=0;i<this->nmodules;++i) {
         epicsSnprintf(outString_, sizeof(outString_), "-module %d",i);
         status = sendCommand();
 
         switch(value){
-            //Cu
-            case 0:
+            case SettingPreset_Cu:
                 if ((int)firmwareVersion_[1]%48 >=3) {
                     epicsSnprintf(outString_, sizeof(outString_), "-settings Cu");
                 }
@@ -616,8 +606,7 @@ asynStatus mythen::loadSettings(epicsInt32 value)
                 }
                 break;
 
-                //Mo
-            case 1:  
+            case SettingPreset_Mo:  
                 if ((int)firmwareVersion_[1]%48 >=3) {
                     epicsSnprintf(outString_, sizeof(outString_), "-settings Mo");
                 }
@@ -626,14 +615,11 @@ asynStatus mythen::loadSettings(epicsInt32 value)
                 }
                 break;
 
-                //Ag
-                //Not supported on firmware verions less than 3
-            case 2:
+            case SettingPreset_Ag:
                 epicsSnprintf(outString_, sizeof(outString_), "-settings Ag");
                 break;
 
-                // Cr
-            case 3:                
+            case SettingPreset_Cr:                
                 if ((int)firmwareVersion_[1]%48 >=3) {
                     epicsSnprintf(outString_, sizeof(outString_), "-settings Cr");
                 }
@@ -663,7 +649,7 @@ asynStatus mythen::setReset()
     epicsInt32 i=0;
 
     setIntegerParam(SDReset,1);
-    for(i=0;i<this->nmodules;i++) {
+    for(i=0;i<this->nmodules;++i) {
         epicsSnprintf(outString_, sizeof(outString_), "-module %d",i);
         status = sendCommand();
 
@@ -795,45 +781,10 @@ error:
     return asynError;
 }
 
-
-//static void c_shutdown(void* arg) {
-//    mythen *p = (mythen*)arg;
-//    p->shutdown(); 
-//}
-
-
 void acquisitionTaskC(void *drvPvt)
 {
     mythen *pPvt = (mythen*)drvPvt; 
     pPvt->acquisitionTask(); 
-}
-
-void pollTaskC(void *drvPvt)
-{
-    mythen *pPvt = (mythen*)drvPvt; 
-    pPvt->pollTask(); 
-}
-
-void mythen::shutdown()
-{
-    //    if (pDetector)
-    //        delete pDetector; 
-}
-
-void mythen::pollTask()
-{
-    // int acquire; 
-    /* Poll detector running status every second*/
-    while (1) {
-        epicsThreadSleep(1); 
-
-        /* Update detector status */
-        this->lock(); 
-        // int detStatus = pDetector->getDetectorStatus();
-        // setIntegerParam(ADStatus, detStatus);
-        callParamCallbacks(); 
-        this->unlock(); 
-    }
 }
 
 void mythen::acquisitionTask()
@@ -851,7 +802,6 @@ void mythen::acquisitionTask()
     this->lock(); 
 
     while (1) {
-        /* Is acquisition active? */
         getIntegerParam(ADAcquire, &acquire);
 
         /* If we are not acquiring then wait for a semaphore that is given when acquisition is started */
@@ -863,12 +813,7 @@ void mythen::acquisitionTask()
                     "%s:%s: waiting for acquire to start\n", driverName, functionName);
             this->unlock();
             eventStatus = epicsEventWait(this->startEventId_);
-            // setStringParam(ADStatusMessage, "Acquiring data");
-            // setIntegerParam(ADNumImagesCounter, 0);
-            // getIntegerParam(ADAcquire, &acquire);
 
-
-            //printf("Read Mode: %d\tnModules: %d\t chanperline: %d\n", readmode_,this->nmodules,chanperline_);
             if (readmode_==0)       //Raw Mode
                 nread_expect = sizeof(epicsInt32)*this->nmodules*(1280/chanperline_);
             else
@@ -1046,10 +991,10 @@ void mythen::decodeRawReadout(int nmods, int nbits, int *data, int *result)
 
     int size = 1280/chanperline*nmods;
     memcpy(tmpArray_, data, size*sizeof(int)); // unsigned int32
-    for (int j = 0; j < chanperline; j++) {
+    for (int j = 0; j < chanperline; ++j) {
         int shift = nbits*j;
         int shiftedMask = mask<<shift;
-        for (int i = 0; i < size; i++) {
+        for (int i = 0; i < size; ++i) {
             result[i*chanperline+j]=((tmpArray_[i]&shiftedMask)>>shift)&mask;
         }
     }
@@ -1194,7 +1139,7 @@ asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
     }
 
     /* Set the parameter in the parameter library. */
-    status = (asynStatus) setDoubleParam(addr, function, value);
+    status = setDoubleParam(addr, function, value);
 
     if (function == ADAcquireTime) {
         status |= setExposureTime(value);
@@ -1230,7 +1175,7 @@ asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
     return((asynStatus)status); 
 }
 
-
+
 /** Report status of the driver.
  * Prints details about the driver if details>0.
  * It then calls the ADDriver::report() method.
@@ -1384,22 +1329,12 @@ mythen::mythen(const char *portName, const char *IPPortName,
         return;
     }
 
-    /* Register the shutdown function for epicsAtExit */
-    // epicsAtExit(c_shutdown, (void*)this); 
-
     /* Create the thread that runs acquisition */
     status = (epicsThreadCreate("acquisitionTask",
                 epicsThreadPriorityMedium,
                 epicsThreadGetStackSize(epicsThreadStackMedium),
                 (EPICSTHREADFUNC)acquisitionTaskC,
                 this) == NULL);
-
-    /* Create the thread that polls status */
-    //    status = (epicsThreadCreate("pollTask",
-    //                                epicsThreadPriorityMedium,
-    //                                epicsThreadGetStackSize(epicsThreadStackMedium),
-    //                                (EPICSTHREADFUNC)pollTaskC,
-    //                                this) == NULL);
 }
 
 /* Code for iocsh registration */
