@@ -126,6 +126,18 @@ epicsFloat32 stringToFloat32(char *str)
     return value;
 }
 
+template <class T>
+class Result {
+public:
+    const asynStatus status;
+    const T value;
+    Result (asynStatus s, T val)
+        : status(s),
+          value(val)
+    { };
+};
+
+
 /** Driver for sls array detectors using over TCP/IP socket */
 class mythen : public ADDriver {
     public:
@@ -200,6 +212,10 @@ class mythen : public ADDriver {
         asynStatus getFirmware();
         void decodeRawReadout(int nmods, int nbits, epicsUInt32 *data, epicsUInt32 *result);
         asynStatus sendCommand(const char* format, ...);
+        Result<epicsFloat32> writeReadFloat32(const char* inString);
+        Result<epicsInt32> writeReadInt32(const char* inString);
+        Result<long long> writeReadInt64(const char* inString);
+        template <int N> Result<char[N]> writeReadOctet(const char* inString);
         asynStatus writeReadMeter(const char* inString);
         epicsInt32 dataCallback(epicsUInt32 *pData);
 
@@ -246,13 +262,94 @@ asynStatus mythen::sendCommand(const char * format, ...)
     return status;
 }
 
+Result<epicsFloat32> mythen::writeReadFloat32(const char * outString)
+{
+    size_t nread, nwrite;
+    int eomReason;
+    char inString[sizeof(epicsFloat32)];
+    const char *functionName = "writeReadFloat32";
+
+    asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
+            strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
+            &nwrite, &nread, &eomReason);
+
+    if (status != asynSuccess) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s:%s: error!\n",driverName, functionName);
+        return Result<epicsFloat32>(asynError, 0);
+    }
+
+    return Result<epicsFloat32>(status, stringToFloat32(inString));
+}
+
+Result<epicsInt32> mythen::writeReadInt32(const char * outString)
+{
+    size_t nread, nwrite;
+    int eomReason;
+    char inString[sizeof(epicsInt32)];
+    const char *functionName="writeReadInt32";
+
+    asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
+            strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
+            &nwrite, &nread, &eomReason);
+
+    if (status != asynSuccess) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s:%s: error!\n",driverName, functionName);
+        return Result<epicsInt32>(asynError, 0);
+    }
+
+    return Result<epicsInt32>(status, stringToInt32(inString));
+}
+
+Result<long long> mythen::writeReadInt64(const char * outString)
+{
+    size_t nread, nwrite;
+    int eomReason;
+    char inString[sizeof(long long)];
+    const char *functionName="writeReadInt64";
+
+    asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
+            strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
+            &nwrite, &nread, &eomReason);
+
+    if (status != asynSuccess) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s:%s: error!\n",driverName, functionName);
+        return Result<long long>(asynError, 0);
+    }
+
+    return Result<long long>(status, stringToInt64(inString));
+}
+
+template <int N>
+Result<char[N]> mythen::writeReadOctet(const char * outString)
+{
+    size_t nread, nwrite;
+    int eomReason;
+    char inString[N];
+    const char *functionName="writeReadOctet";
+
+    asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
+            outString, strlen(outString), inString, 
+            sizeof(inString), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+
+    if (status != asynSuccess) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s:%s: error!\n",driverName, functionName);
+        return Result<char[N]>(asynError, "");
+    }
+
+    return Result<char[N]>(status, inString);
+}
+
 /** Send a string to the detector and reads the response.**/
 asynStatus mythen::writeReadMeter(const char * outString)
 {
-    size_t nread;
-    size_t nwrite;
+    size_t nread; // XXX: unused
+    size_t nwrite; // XXX: unused
+    int eomReason; // XXX: unused
     asynStatus status;
-    int eomReason;
     const char *functionName="writeReadMeter";
 
     if (strcmp(outString,"-get tau")==0) {
