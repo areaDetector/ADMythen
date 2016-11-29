@@ -45,7 +45,7 @@
 
 #include <epicsExport.h>
 
-// #include "mythenV3.h"
+#include <vector>
 
 #define MAX_FILENAME_LEN 256
 #define MAX_DIMS      1280
@@ -129,14 +129,55 @@ epicsFloat32 stringToFloat32(char *str)
 template <class T>
 class Result {
 public:
-    const asynStatus status;
-    const T value;
+    asynStatus status;
+    T value;
+    Result() {}
     Result (asynStatus s, T val)
         : status(s),
           value(val)
-    { };
+    { }
 };
 
+
+class FirmwareVersion {
+public:
+    /* These are capitalized due to macro definition in glibc:
+     * https://bugzilla.redhat.com/show_bug.cgi?id=130601
+     */
+    const int MAJOR;
+    const int MINOR;
+    const int RELEASE; 
+    const std::vector<char> version_str;
+
+    /**
+     * Constructor.
+     *
+     * The version numbers are parsed from 7 byte long string
+     * of type "M3.0.0". 
+     *
+     * @param version Version string.
+     */
+    FirmwareVersion(std::vector<char> version)
+        : MAJOR(version[1]%48),
+          MINOR(version[3]%48),
+          RELEASE(version[5]%48),
+          version_str(version)
+    { }
+
+    /**
+     * Default constructor.
+     */
+    FirmwareVersion()
+        : MAJOR(0),
+          MINOR(0),
+          RELEASE(0)
+    { }
+
+    FirmwareVersion operator=(const FirmwareVersion& fw)
+    {
+        return FirmwareVersion(fw.version_str);
+    }
+};
 
 /** Driver for sls array detectors using over TCP/IP socket */
 class mythen : public ADDriver {
@@ -215,8 +256,7 @@ class mythen : public ADDriver {
         Result<epicsFloat32> writeReadFloat32(const char* inString);
         Result<epicsInt32> writeReadInt32(const char* inString);
         Result<long long> writeReadInt64(const char* inString);
-        template <int N> Result<char[N]> writeReadOctet(const char* inString);
-        asynStatus writeReadMeter(const char* inString);
+        template <int N> Result<std::vector<char> > writeReadOctet(const char* inString);
         epicsInt32 dataCallback(epicsUInt32 *pData);
 
         /* Our data */
@@ -227,7 +267,7 @@ class mythen : public ADDriver {
         epicsInt32 chanperline_, nbits_;
         epicsInt32 nmodules_, readmode_;
         char *IPPortName_;
-        char firmwareVersion_[FIRMWARE_VERSION_LEN];
+        FirmwareVersion fwVersion_;
         char inString_[MAX_COMMAND_LEN];
 };
 
@@ -237,29 +277,33 @@ class mythen : public ADDriver {
 asynStatus mythen::sendCommand(const char * format, ...)
 {
     va_list args;
-    asynStatus status;
     const char *functionName="sendCommand";
-    int aux;
-
     char outString[MAX_COMMAND_LEN];
+
     va_start(args, format);
-    if (sprintf(outString, format, args) < 0) {
+    int str_chars = sprintf(outString, format, args);
+    va_end(args);
+    if (str_chars < 0) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error, formatting of command failed %s\n",
                 driverName, functionName, format);
         return asynError;
     }
 
-    va_end(args);
-    status = writeReadMeter(outString);
-    aux = stringToInt32(this->inString_);
-    //check for errors
-    if (aux < 0) {
+    Result<epicsInt32> result = writeReadInt32(outString);
+    if (result.status != asynSuccess) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s:%s: error, command execution failed %s\n",
+                driverName, functionName, outString);
+        return asynError;
+    } else if (result.value < 0) {
+        // TODO are all error codes negative? Why is this != 0
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error, expected 0, received %d\n",
-                driverName, functionName, aux);
+                driverName, functionName, result.value);
+        return asynError;
     }
-    return status;
+    return asynSuccess;
 }
 
 Result<epicsFloat32> mythen::writeReadFloat32(const char * outString)
@@ -323,56 +367,24 @@ Result<long long> mythen::writeReadInt64(const char * outString)
 }
 
 template <int N>
-Result<char[N]> mythen::writeReadOctet(const char * outString)
+Result<std::vector<char> > mythen::writeReadOctet(const char * outString)
 {
     size_t nread, nwrite;
     int eomReason;
-    char inString[N];
+    std::vector<char> inString(N);
     const char *functionName="writeReadOctet";
 
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
-            outString, strlen(outString), inString, 
-            sizeof(inString), M1K_TIMEOUT, &nwrite, &nread, &eomReason);
+            outString, strlen(outString), &inString[0], 
+            N, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
 
     if (status != asynSuccess) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error!\n",driverName, functionName);
-        return Result<char[N]>(asynError, "");
+        return Result<std::vector<char> >(asynError, inString);
     }
 
-    return Result<char[N]>(status, inString);
-}
-
-/** Send a string to the detector and reads the response.**/
-asynStatus mythen::writeReadMeter(const char * outString)
-{
-    size_t nread; // XXX: unused
-    size_t nwrite; // XXX: unused
-    int eomReason; // XXX: unused
-    asynStatus status;
-    const char *functionName="writeReadMeter";
-
-    if (strcmp(outString,"-get tau")==0) {
-        // TODO move specialization to new function
-        status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
-                strlen(outString), inString_, sizeof(epicsFloat32),
-                M1K_TIMEOUT, &nwrite, &nread, &eomReason);
-    } else if (strcmp(outString,"-get version")==0) {
-        // TODO move specialization to new function
-        status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
-                strlen(outString), firmwareVersion_,
-                sizeof(firmwareVersion_), M1K_TIMEOUT, &nwrite, &nread,
-                &eomReason);
-    } else {
-        // XXX how does this even work for long long?
-        status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
-                strlen(outString), inString_, sizeof(int), M1K_TIMEOUT,
-                &nwrite, &nread, &eomReason);
-    }
-    if (status != asynSuccess)
-        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error!\n",driverName, functionName);
-    return status;
+    return Result<std::vector<char> >(status, inString);
 }
 
 /** Starts and stops the acquisition. **/
@@ -503,7 +515,7 @@ asynStatus mythen::setEnergy(epicsFloat64 value)
     epicsInt32 i;
     int status = asynSuccess;
 
-    if ((int)firmwareVersion_[1]%48 >=3) {
+    if (fwVersion_.MAJOR>= 3) {
         for(i=0;i<nmodules_;++i) {
             status |= sendCommand("-module %d", i);
             status |= sendCommand("-energy %f", value);
@@ -591,22 +603,32 @@ asynStatus mythen::setNumGates(epicsInt32 value)
 /** Get Firmware Version **/
 asynStatus mythen::getFirmware()
 {
-    asynStatus status = asynSuccess;
+    Result<std::vector<char> > fw_result = 
+        writeReadOctet<FIRMWARE_VERSION_LEN>("-get version");
+    if (fw_result.status != asynSuccess) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s: Unable to read firmware version.\n",
+                driverName);
+        return asynError;
+    }
 
-    writeReadMeter("-get version");
+    fwVersion_ = FirmwareVersion(fw_result.value);
 
-    return status; // TODO always success?
+    return asynSuccess;
 }
 
 /** Get Acquition Status */
 epicsInt32 mythen::getStatus()
 {
     epicsInt32 detStatus;
-    int aux;
+    epicsInt32 aux;
 
-    writeReadMeter("-get status");
-    aux = stringToInt32(this->inString_);
-    int m_status =  aux & 1;          // Acquire running status (non-zero)
+    Result<epicsInt32> status_result = writeReadInt32("-get status");
+    if (status_result.status != asynSuccess) {
+        return ADStatusError; // TODO
+    }
+    aux = status_result.value;
+    int m_status = aux & 1;          // Acquire running status (non-zero)
     int t_status = aux & (1<<3);      // Waiting for trigger (non-zero)
     int d_status = aux & (1<<16);     // No Data Available when not zero
     int triggerWaitCnt=0;
@@ -620,8 +642,11 @@ epicsInt32 mythen::getStatus()
         while ((t_status ) && (triggerWaitCnt<MAX_TRIGGER_TIMEOUT_COUNT)) {
             triggerWait = 0.0001*pow(10.0,((double)(triggerWaitCnt/10)+1));
             epicsThreadSleep(triggerWait);
-            writeReadMeter("-get status");
-            aux = stringToInt32(this->inString_);
+            status_result = writeReadInt32("-get status");
+            if (status_result.status != asynSuccess) {
+                return ADStatusError; // TODO
+            }
+            aux = status_result.value;
             t_status = aux & (1<<3);
             d_status = aux & (1<<16);
             triggerWaitCnt++;
@@ -680,9 +705,9 @@ asynStatus mythen::loadSettings(epicsInt32 value)
         // TODO if this fails we probably don't want changing other stuff
         status = sendCommand("-module %d", i);
 
-        switch(value){
+        switch (value) {
             case SettingPreset_Cu:
-                if ((int)firmwareVersion_[1]%48 >=3) {
+                if (fwVersion_.MAJOR >= 3) {
                     status = sendCommand("-settings Cu");
                 } else {
                     status = sendCommand("-settings StdCu");
@@ -690,7 +715,7 @@ asynStatus mythen::loadSettings(epicsInt32 value)
                 break;
 
             case SettingPreset_Mo:
-                if ((int)firmwareVersion_[1]%48 >=3) {
+                if (fwVersion_.MAJOR >= 3) {
                     status = sendCommand("-settings Mo");
                 } else {
                     status = sendCommand("-settings StdMo");
@@ -698,7 +723,7 @@ asynStatus mythen::loadSettings(epicsInt32 value)
                 break;
 
             case SettingPreset_Ag:
-                if ((int)firmwareVersion_[1]%48 >=3) {
+                if (fwVersion_.MAJOR >= 3) {
                     status = sendCommand("-settings Ag");
                 } else {
                     return asynError; // TODO Unsupported on older firmwares
@@ -706,7 +731,7 @@ asynStatus mythen::loadSettings(epicsInt32 value)
                 break;
 
             case SettingPreset_Cr:
-                if ((int)firmwareVersion_[1]%48 >=3) {
+                if (fwVersion_.MAJOR >= 3) {
                     status = sendCommand("-settings Cr");
                 } else {
                     status = sendCommand("-settings HgCr");
@@ -747,10 +772,14 @@ asynStatus mythen::setReset()
 /** Reads the values of all the modules parameters, sets them in the parameter library**/
 asynStatus mythen::getSettings()
 {
+    /* TODO this can be separated into functions */
     int aux;
     epicsFloat32 faux;
     long long laux;
     epicsFloat64 DetTime;
+    Result<epicsInt32> res;
+    Result<epicsFloat32> fres;
+    Result<long long> lres;
     char outString[MAX_COMMAND_LEN]; // TODO this is bad.
 
     static const char *functionName = "getSettings";
@@ -761,76 +790,87 @@ asynStatus mythen::getSettings()
         goto error;
     }
 
-    writeReadMeter("-get flatfieldcorrection");
-    aux = stringToInt32(this->inString_);
+    res = writeReadInt32("-get flatfieldcorrection");
+    if (res.status != asynSuccess) goto error;
+    aux = res.value;
     if (aux!=0 && aux!=1) goto error;
     setIntegerParam(SDUseFlatField, aux);
 
 
-    writeReadMeter("-get badchannelinterpolation");
-    aux = stringToInt32(this->inString_);
+    res = writeReadInt32("-get badchannelinterpolation");
+    if (res.status != asynSuccess) goto error;
+    aux = res.value;
     if (aux!=0 && aux!=1) goto error;
     setIntegerParam(SDUseBadChanIntrpl, aux);
 
-    writeReadMeter("-get ratecorrection");
-    aux = stringToInt32(this->inString_);
+    res = writeReadInt32("-get ratecorrection");
+    if (res.status != asynSuccess) goto error;
+    aux = res.value;
     if (aux!=0 && aux!=1) goto error;
     setIntegerParam(SDUseCountRate, aux);
 
-    writeReadMeter("-get nbits");
-    aux = stringToInt32(this->inString_);
+    res = writeReadInt32("-get nbits");
+    if (res.status != asynSuccess) goto error;
+    aux = res.value;
     if (aux < 0) goto error;
     nbits_ = aux;
     chanperline_ = 32/aux;
     setIntegerParam(SDBitDepth, aux);
 
-    writeReadMeter("-get time");
-    aux = stringToInt32(this->inString_);
+    res = writeReadInt32("-get time");
+    if (res.status != asynSuccess) goto error;
+    aux = res.value;
     if (aux >= 0) DetTime = (aux * (1E-7));
     else goto error;
     setDoubleParam(ADAcquireTime,DetTime);
 
 
-
-    writeReadMeter("-get frames");
-    aux = stringToInt32(this->inString_);
+    res = writeReadInt32("-get frames");
+    if (res.status != asynSuccess) goto error;
+    aux = res.value;
     if (aux >= 0) setIntegerParam(SDNumFrames, aux);
 
-    writeReadMeter("-get tau");
-    faux = stringToFloat32(this->inString_);
+    fres = writeReadFloat32("-get tau");
+    if (fres.status != asynSuccess) goto error;
+    faux = fres.value;
     if (faux == -1 || faux > 0) setDoubleParam(SDTau,faux);
     else goto error;
 
 
-    writeReadMeter("-get kthresh");
-    faux = stringToFloat32(this->inString_);
+    fres = writeReadFloat32("-get kthresh");
+    if (fres.status != asynSuccess) goto error;
+    faux = fres.value;
     if (faux < 0) goto error;
     else setDoubleParam(SDThreshold,faux);
 
 
     //Firmware greater than 3 commands
-    if ((int)firmwareVersion_[1]%48 >=3) {
-        writeReadMeter("-get energy");
-        faux = stringToFloat32(this->inString_);
+    if (fwVersion_.MAJOR >= 3) {
+        fres = writeReadFloat32("-get energy");
+        if (fres.status != asynSuccess) goto error;
+        faux = fres.value;
         if (faux < 0) goto error;
         else setDoubleParam(SDEnergy,faux);
 
-        writeReadMeter("-get delafter");
-        laux = stringToInt64(this->inString_);
+        lres = writeReadInt64("-get delafter");
+        if (lres.status != asynSuccess) goto error;
+        laux = lres.value;
         if (laux >= 0) DetTime = (laux * (1E-7));
         else goto error;
         setDoubleParam(SDDelayTime,DetTime);
 
 
         /* Get trigger modes */
-        writeReadMeter("-get conttrig");
-        aux = stringToInt32(this->inString_);
+        res = writeReadInt32("-get conttrig");
+        if (res.status != asynSuccess) goto error;
+        aux = res.value;
         if (aux < 0) goto error;
         if (aux == 1)
             setIntegerParam(SDTrigger, 2);
         else {
-            writeReadMeter("-get trig");
-            aux = stringToInt32(this->inString_);
+            res = writeReadInt32("-get trig");
+            if (res.status != asynSuccess) goto error;
+            aux = res.value;
             if (aux < 0) goto error;
             if (aux == 1)
                 setIntegerParam(SDTrigger, 1);
@@ -1172,7 +1212,7 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
         /* If this is not a parameter we have handled call the base class */
         status |= ADDriver::writeInt32(pasynUser, value);
     } else {
-        status |= asynError;
+        status = asynError; // TODO
     }
 
     status |= getSettings();
@@ -1226,9 +1266,11 @@ asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
         status |= setEnergy(value);
     } else if (function == SDTau) {
         status |= setTau(value);
-    } else {
+    } else if (function < NUM_SD_PARAMS) {
         /* If this is not a parameter we have handled call the base class */
-        if (function < NUM_SD_PARAMS) status = ADDriver::writeFloat64(pasynUser, value);
+        status = ADDriver::writeFloat64(pasynUser, value);
+    } else {
+        status = asynError; // TODO
     }
 
     status |= getSettings();
@@ -1343,7 +1385,7 @@ mythen::mythen(const char *portName, const char *IPPortName,
     status |= setStringParam (ADModel,        "Mythen");
 
     status |= getFirmware();
-    status |= setStringParam (SDFirmwareVersion, firmwareVersion_);
+    status |= setStringParam (SDFirmwareVersion, &(fwVersion_.version_str[0]));
 
     int sensorSizeX = MAX_DIMS;
     int  sensorSizeY = 1;
@@ -1373,8 +1415,9 @@ mythen::mythen(const char *portName, const char *IPPortName,
 
     int aux;
     //get nmodules and check for errors
-    status |= writeReadMeter("-get nmodules");
-    aux = stringToInt32(this->inString_);
+    Result<epicsInt32> res = writeReadInt32("-get nmodules");
+    status |= res.status;
+    aux = res.value;
     if (aux < 0) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error, -get nmodules, inString=%s\n",
