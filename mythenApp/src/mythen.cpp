@@ -46,6 +46,7 @@
 #include <epicsExport.h>
 
 #include <vector>
+#include <climits>
 
 #define MAX_FILENAME_LEN 256
 #define MAX_DIMS      1280
@@ -76,69 +77,59 @@ static const char *driverName = "mythen";
 #define SDFirmwareVersionString "SD_FIRMWARE_VERSION"  /* asynOctet    ro */
 #define SDReadModeString        "SD_READ_MODE"
 
+namespace mythen {
 
-void swap4(char *value)
+/** 
+ * Casts a byte array to the specific type and also swaps bytes if the host uses
+ * big endian format.
+ *
+ * This implementation seems to be on the slower side but simplifies the interface,
+ * consider adding specializations.
+ */
+template <class T>
+T byteCast(char* str)
 {
-    char temp;
-    temp = value[0];
-    value[0] = value[3];
-    value[3] = temp;
-    temp = value[1];
-    value[1] = value[2];
-    value[2] = temp;
-}
+    T value; 
 
-void swap8(char *value)
-{
-    char temp;
-    temp = value[0];
-    value[0] = value[7];
-    value[7] = temp;
-    temp = value[1];
-    value[1] = value[6];
-    value[6] = temp;
-    temp = value[2];
-    value[2] = value[5];
-    value[5] = temp;
-    temp = value[3];
-    value[3] = value[4];
-    value[4] = temp;
-}
-
-epicsInt32 stringToInt32(char *str)
-{
-    epicsInt32 value = *reinterpret_cast<epicsInt32*>(str);
-    if (EPICS_BYTE_ORDER == EPICS_ENDIAN_BIG) swap4((char *)&value);
+    if (EPICS_BYTE_ORDER == EPICS_ENDIAN_BIG) {
+        char* pVal = reinterpret_cast<char*>(&value);
+        size_t i;
+        for (i = 0; i < sizeof(T); ++i) {
+            pVal[sizeof(T)-1-i] = str[i];
+        }
+    } else {
+        value = *reinterpret_cast<T*>(str);
+    }
     return value;
 }
 
-long long stringToInt64(char *str)
-{
-    long long value = *reinterpret_cast<long long*>(str);
-    if (EPICS_BYTE_ORDER == EPICS_ENDIAN_BIG) swap8((char *)&value);
-    return value;
-}
-
-epicsFloat32 stringToFloat32(char *str)
-{
-    epicsFloat32 value = *reinterpret_cast<epicsFloat32*>(str);
-    if (EPICS_BYTE_ORDER == EPICS_ENDIAN_BIG) swap4((char *)&value);
-    return value;
-}
-
+/**
+ * Class that contains both the status of the communication and also the
+ * output of the command.
+ */
 template <class T>
 class Result {
 public:
+    /** Status of the communication */
     asynStatus status;
+    /** Output value */
     T value;
+    /** Default constructor */
     Result() {}
+    /**
+     * Constructor
+     * \param s Communication status.
+     * \param val Output value.
+     */
     Result (asynStatus s, T val)
         : status(s),
           value(val)
     { }
 };
 
-
+/**
+ * Mythen firmware version utility class.
+ */
 class FirmwareVersion {
 public:
     /* These are capitalized due to macro definition in glibc:
@@ -147,6 +138,8 @@ public:
     const int MAJOR;
     const int MINOR;
     const int RELEASE; 
+    /* std::vector<char> is used instead of string because the string is not
+     * required to be stored in order in the memory on older compilers(c++98).*/
     const std::vector<char> version_str;
 
     /**
@@ -155,7 +148,7 @@ public:
      * The version numbers are parsed from 7 byte long string
      * of type "M3.0.0". 
      *
-     * @param version Version string.
+     * \param version Version string.
      */
     FirmwareVersion(std::vector<char> version)
         : MAJOR(version[1]%48),
@@ -179,7 +172,11 @@ public:
     }
 };
 
-/** Driver for sls array detectors using over TCP/IP socket */
+/**
+ * Driver for Dectris Mythen detector.
+ *
+ * This driver uses the socket interface over TCP/UDP.
+ */
 class mythen : public ADDriver {
     public:
         mythen(const char *portName, const char *IPPortName,
@@ -187,13 +184,14 @@ class mythen : public ADDriver {
                 int priority, int stackSize);
 
         /* These are the methods that we override from ADDriver */
-        virtual asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
-        virtual asynStatus writeFloat64(asynUser *pasynUser, epicsFloat64 value);
-        virtual asynStatus writeOctet(asynUser *pasynUser, const char *value,
-                size_t nChars, size_t *nActual);
-        virtual void report(FILE *fp, int details);
+        asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
+        asynStatus writeFloat64(asynUser *pasynUser, epicsFloat64 value);
+        asynStatus writeOctet(asynUser *pasynUser, const char *value,
+                size_t nChars, size_t *nActual); // TODO not really used
+        void report(FILE *fp, int details);
 
-        void acquisitionTask();
+        /** Used to start the internal thread for acquisition */
+        friend void acquisitionTaskC(void *drvPvt);
 
     protected:
         int SDSetting;
@@ -232,6 +230,7 @@ class mythen : public ADDriver {
 
     private:                                       
         /* These are the methods we implement from Mythen */
+        void acquisitionTask();
         asynStatus setAcquire(epicsInt32 value);
         asynStatus setFCorrection(epicsInt32 value);
         asynStatus setRCorrection(epicsInt32 value);
@@ -244,7 +243,6 @@ class mythen : public ADDriver {
         asynStatus setKthresh(epicsFloat64 value);
         asynStatus setEnergy(epicsFloat64 value);
         asynStatus setTau(epicsFloat64 value);
-        asynStatus setFrames(epicsInt32 value);
         asynStatus setTrigger(epicsInt32 value);
         asynStatus loadSettings(epicsInt32 value);
         asynStatus setReset();
@@ -253,22 +251,18 @@ class mythen : public ADDriver {
         asynStatus getFirmware();
         void decodeRawReadout(int nmods, int nbits, epicsUInt32 *data, epicsUInt32 *result);
         asynStatus sendCommand(const char* format, ...);
-        Result<epicsFloat32> writeReadFloat32(const char* inString);
-        Result<epicsInt32> writeReadInt32(const char* inString);
-        Result<long long> writeReadInt64(const char* inString);
+        template <class T> Result<T> writeReadNumeric(const char* inString);
         template <int N> Result<std::vector<char> > writeReadOctet(const char* inString);
         epicsInt32 dataCallback(epicsUInt32 *pData);
 
-        /* Our data */
         epicsEventId startEventId_;
         asynUser *pasynUserMeter_;
         epicsInt32 acquiring_;
-        epicsInt32 frames_;
-        epicsInt32 chanperline_, nbits_;
-        epicsInt32 nmodules_, readmode_;
-        char *IPPortName_;
+        epicsInt32 chanperline_;
+        epicsInt32 nbits_;
+        epicsInt32 nmodules_;
+        epicsInt32 readmode_;
         FirmwareVersion fwVersion_;
-        char inString_[MAX_COMMAND_LEN];
 };
 
 #define NUM_SD_PARAMS (&LAST_SD_PARAM - &FIRST_SD_PARAM + 1)
@@ -290,14 +284,13 @@ asynStatus mythen::sendCommand(const char * format, ...)
         return asynError;
     }
 
-    Result<epicsInt32> result = writeReadInt32(outString);
+    Result<epicsInt32> result = writeReadNumeric<epicsInt32>(outString);
     if (result.status != asynSuccess) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error, command execution failed %s\n",
                 driverName, functionName, outString);
         return asynError;
-    } else if (result.value < 0) {
-        // TODO are all error codes negative? Why is this != 0
+    } else if (result.value != 0) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error, expected 0, received %d\n",
                 driverName, functionName, result.value);
@@ -306,12 +299,13 @@ asynStatus mythen::sendCommand(const char * format, ...)
     return asynSuccess;
 }
 
-Result<epicsFloat32> mythen::writeReadFloat32(const char * outString)
+template <class T>
+Result<T> mythen::writeReadNumeric(const char * outString)
 {
     size_t nread, nwrite;
     int eomReason;
-    char inString[sizeof(epicsFloat32)];
-    const char *functionName = "writeReadFloat32";
+    char inString[sizeof(T)];
+    const char *functionName = "writeRead";
 
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
             strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
@@ -320,50 +314,10 @@ Result<epicsFloat32> mythen::writeReadFloat32(const char * outString)
     if (status != asynSuccess) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error!\n",driverName, functionName);
-        return Result<epicsFloat32>(asynError, 0);
+        return Result<T>(asynError, 0);
     }
 
-    return Result<epicsFloat32>(status, stringToFloat32(inString));
-}
-
-Result<epicsInt32> mythen::writeReadInt32(const char * outString)
-{
-    size_t nread, nwrite;
-    int eomReason;
-    char inString[sizeof(epicsInt32)];
-    const char *functionName="writeReadInt32";
-
-    asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
-            strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
-            &nwrite, &nread, &eomReason);
-
-    if (status != asynSuccess) {
-        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error!\n",driverName, functionName);
-        return Result<epicsInt32>(asynError, 0);
-    }
-
-    return Result<epicsInt32>(status, stringToInt32(inString));
-}
-
-Result<long long> mythen::writeReadInt64(const char * outString)
-{
-    size_t nread, nwrite;
-    int eomReason;
-    char inString[sizeof(long long)];
-    const char *functionName="writeReadInt64";
-
-    asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
-            strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
-            &nwrite, &nread, &eomReason);
-
-    if (status != asynSuccess) {
-        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error!\n",driverName, functionName);
-        return Result<long long>(asynError, 0);
-    }
-
-    return Result<long long>(status, stringToInt64(inString));
+    return Result<T>(status, byteCast<T>(inString));
 }
 
 template <int N>
@@ -390,94 +344,60 @@ Result<std::vector<char> > mythen::writeReadOctet(const char * outString)
 /** Starts and stops the acquisition. **/
 asynStatus mythen::setAcquire(epicsInt32 value)
 {
-    size_t nread;
-    size_t nwrite;
     asynStatus status = asynSuccess;
-    epicsInt32 eomReason;
     static const char *functionName = "setAcquire";
     if (value == 0) {
-        status = pasynOctetSyncIO->writeRead(pasynUserMeter_, "-stop", 
-                sizeof "-stop", inString_, sizeof(epicsInt32), M1K_TIMEOUT, 
-                &nwrite, &nread, &eomReason);
+        status = sendCommand("-stop");
         setIntegerParam(ADStatus, getStatus());
         acquiring_ = 0;
     } else if (not acquiring_) {
-        sendCommand("-start");
+        status = sendCommand("-start");
         // Notify the read thread that acquisition has started
         epicsEventSignal(startEventId_);
-
         acquiring_ = 1;
     } else {
-        // TODO request acquire even though we are already acquiring.
-        status = asynError;
+        // We are already acquiring.
+        status = asynSuccess;
     }
 
-    if(status != asynSuccess)
+    if(status != asynSuccess) {
         acquiring_ = 0;
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error!\n", driverName, functionName);
-    return status;
-}
-
-/** Sets the number of frames
- * whitin an acquisition**/
-asynStatus mythen::setFrames(epicsInt32 value)
-{
-    asynStatus status;
-    epicsInt32 imageMode;
-    getIntegerParam(ADImageMode, &imageMode);
-    if (imageMode == 0) {
-        // Single image mode // TODO what if value != 1
-        status = sendCommand("-frames %d", 1);
-    } else {
-        status = sendCommand("-frames %d", value);
     }
-
-    // Save frame count for acquition
-    frames_ = value;
-
     return status;
 }
 
 /** Sets the Trigger Mode */
 asynStatus mythen::setTrigger(epicsInt32 value)
 {
-    asynStatus status = asynSuccess;;
-
     switch (value) {
-    case TriggerMode_None:
-        // Clearing trigen clears conttrig also
-        status = sendCommand("-trigen 0");
-        break;
-    case TriggerMode_Single:
-        status = sendCommand("-trigen 1");
-        break;
-    case TriggerMode_Continuous:
-        status = sendCommand("-conttrigen 1");
-        break;
-    default:
-        status = asynError; // TODO not a valid option
+        case TriggerMode_None:
+            // Clearing trigen clears conttrig also
+            return sendCommand("-trigen 0");
+        case TriggerMode_Single:
+            return sendCommand("-trigen 1");
+        case TriggerMode_Continuous:
+            return sendCommand("-conttrigen 1");
+        default:
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "Unknown trigger mode %d \n.", value);
+            return asynError;
     }
 
-    return status;
 }
 
 
 /** Sets the dead time constant for the rate correction**/
 asynStatus mythen::setTau(epicsFloat64 value)
 {
-    asynStatus status;
     if(value == -1 || value > 0) {
-        status = sendCommand("-tau %f", value);
+        return sendCommand("-tau %f", value);
     } else {
-        setDoubleParam(SDTau,0);
-        callParamCallbacks();
-
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "error check if tau -1 or >0 (value = %f)", value);
         return asynError;
     }
-    return status;
 }
 
 
@@ -485,11 +405,18 @@ asynStatus mythen::setTau(epicsFloat64 value)
 asynStatus mythen::setKthresh(epicsFloat64 value)
 {
     epicsInt32 i;
-    asynStatus status = asynSuccess;
+    int status = asynSuccess;
+
+    if (value < 0) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "Energy threshold must be positive."
+                " (setKthresh called with %f)", value);
+        return asynError;
+    }
 
     for(i=0;i<nmodules_;++i) {
-        status = sendCommand("-module %d", i);
-        status = sendCommand("-kthresh %f", value);
+        status |= sendCommand("-module %d", i);
+        status |= sendCommand("-kthresh %f", value);
     }
 
     if(status == asynSuccess) {
@@ -500,104 +427,115 @@ asynStatus mythen::setKthresh(epicsFloat64 value)
         callParamCallbacks();
 
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "error check if value > 0 (value = %f)", value);
+                "Unable to set kthresh to %f.", value);
         return asynError;
     }
 
-    return status;
+    return asynSuccess;
 }
 
 
 /** Sets the energy threshold for the module **/
 asynStatus mythen::setEnergy(epicsFloat64 value)
 {
-
     epicsInt32 i;
     int status = asynSuccess;
 
-    if (fwVersion_.MAJOR>= 3) {
+    if (value < 0) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "X-ray energy must be positive."
+                " (setEnergy called with %f)", value);
+        return asynError;
+    }
+
+    if (fwVersion_.MAJOR >= 3) {
         for(i=0;i<nmodules_;++i) {
             status |= sendCommand("-module %d", i);
             status |= sendCommand("-energy %f", value);
         }
         if(status != asynSuccess) {
             asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                    "error check if value > 0 (value = %f)", value);
+                    "Unable to set X-ray energy (value = %f)", value);
             return asynError;
         }
     } else {
-        // TODO nothing was done, probably unsupported on this firmware
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "X-ray energy cannot be set on this firmware.");
         return asynError;
     }
 
-    return (asynStatus)status;
+    return asynSuccess;
 }
 
 /** Sets the exposure time of one frame. (units of 100ns) **/
 asynStatus mythen::setExposureTime(epicsFloat64 value)
 {
-    asynStatus status;
-    int hns = (int)(value * (1E+7)); // TODO check value before casting (overflow)
-    status = sendCommand("-time %d", hns);
-    return status;
+    if (value < 0) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "Exposure time cannot be negative (reqested %f).", value);
+        return asynError;
+    }
+    if (value > LLONG_MAX * 1E-7) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "Reqested exposure time (%f) too long. "
+                "Maximum value is %f.", value, LLONG_MAX*1E-7);
+        return asynOverflow;
+    }
+
+    long long hns = (long long)(value * (1E+7));
+    return sendCommand("-time %lld", hns);
 }
 
-/** Sets the exposure time of one frame. (units of 100ns) **/
+/** Sets the delay time after trigger. (units of 100ns) **/
 asynStatus mythen::setDelayAfterTrigger(epicsFloat64 value)
 {
-    asynStatus status;
-    int hns = (int)(value * (1E+7)); // TODO check value before casting (overflow)
-    status = sendCommand("-delafter %d", hns);
-    return status;
+    if (value < 0) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "Trigger delay time cannot be negative (reqested %f).", value);
+        return asynError;
+    }
+    if (value > LLONG_MAX * 1E-7) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "Requested trigger delay time (%f) too long. "
+                "Maximum value is %f", value, LLONG_MAX * 1E-7);
+        return asynOverflow;
+    }
+
+    long long hns = (long long)(value * (1E+7));
+    return sendCommand("-delafter %d", hns);
 }
 
 /** Enables or disables the flatfield correction.
   After initialisation the flatfield correction is enabled. **/
 asynStatus mythen::setFCorrection(epicsInt32 value)
 {
-    asynStatus status;
-
-    status = sendCommand("-flatfieldcorrection %d", value);
-    return status;
+    return sendCommand("-flatfieldcorrection %d", value);
 }
 
 /** Enables or disables the bad channel interpolation **/
 asynStatus mythen::setBadChanIntrpl(epicsInt32 value)
 {
-    asynStatus status;
-
-    status = sendCommand("-badchannelinterpolation %d", value);
-    return status;
+    return sendCommand("-badchannelinterpolation %d", value);
 }
-
 
 /** Enables or disables the rate correction.
   After initialisation the rate correction is disabled. **/
 asynStatus mythen::setRCorrection(epicsInt32 value)
 {
-    asynStatus status;
-
-    status = sendCommand("-ratecorrection %d", value);
-    return status;
+    return sendCommand("-ratecorrection %d", value);
 }
 
 /** Enables or disables the gates.
   After initialisation the gates are disabled. **/
 asynStatus mythen::setUseGates(epicsInt32 value)
 {
-    asynStatus status;
-
-    status = sendCommand("-gateen %d", value);
-    return status;
+    return sendCommand("-gateen %d", value);
 }
 
 /** Number of gates. **/
 asynStatus mythen::setNumGates(epicsInt32 value)
 {
-    asynStatus status;
-
-    status = sendCommand("-gates %d", value);
-    return status;
+    return sendCommand("-gates %d", value);
 }
 
 /** Get Firmware Version **/
@@ -623,28 +561,29 @@ epicsInt32 mythen::getStatus()
     epicsInt32 detStatus;
     epicsInt32 aux;
 
-    Result<epicsInt32> status_result = writeReadInt32("-get status");
+    Result<epicsInt32> status_result = writeReadNumeric<epicsInt32>("-get status");
     if (status_result.status != asynSuccess) {
-        return ADStatusError; // TODO
+        return ADStatusError;
     }
     aux = status_result.value;
-    int m_status = aux & 1;          // Acquire running status (non-zero)
-    int t_status = aux & (1<<3);      // Waiting for trigger (non-zero)
-    int d_status = aux & (1<<16);     // No Data Available when not zero
+    int m_status = aux & 1;       // Acquire running status (non-zero)
+    int t_status = aux & (1<<3);  // Waiting for trigger (non-zero)
+    int d_status = aux & (1<<16); // No Data Available when not zero
     int triggerWaitCnt=0;
     double triggerWait;
 
-    if (m_status || !d_status) {
+    if (m_status || not d_status) {
         detStatus = ADStatusAcquire;
 
         triggerWaitCnt=0;
-        //Waits for Trigger for increaseing amount of time for a total of almost 1 minute
+        // Waits for Trigger for increasing amount of time for a total of 
+        // almost 1 minute
         while ((t_status ) && (triggerWaitCnt<MAX_TRIGGER_TIMEOUT_COUNT)) {
             triggerWait = 0.0001*pow(10.0,((double)(triggerWaitCnt/10)+1));
             epicsThreadSleep(triggerWait);
-            status_result = writeReadInt32("-get status");
+            status_result = writeReadNumeric<epicsInt32>("-get status");
             if (status_result.status != asynSuccess) {
-                return ADStatusError; // TODO
+                return ADStatusError;
             }
             aux = status_result.value;
             t_status = aux & (1<<3);
@@ -652,11 +591,9 @@ epicsInt32 mythen::getStatus()
             triggerWaitCnt++;
         }
 
-        // TODO check this, the status may be overridden
-        if (!d_status) {
+        if (not d_status) {
             detStatus = ADStatusReadout;
-        }
-        if (triggerWaitCnt>=MAX_TRIGGER_TIMEOUT_COUNT) {
+        } else if (triggerWaitCnt>=MAX_TRIGGER_TIMEOUT_COUNT) {
             detStatus = ADStatusError;
         }
     } else {
@@ -698,57 +635,69 @@ asynStatus mythen::setBitDepth(epicsInt32 value)
   suitable value.**/
 asynStatus mythen::loadSettings(epicsInt32 value)
 {
-    asynStatus status=asynSuccess;
-    epicsInt32 i=0;
+    int status = asynSuccess;
+    epicsInt32 i = 0;
 
     for (i=0;i<nmodules_;++i) {
-        // TODO if this fails we probably don't want changing other stuff
         status = sendCommand("-module %d", i);
 
         switch (value) {
             case SettingPreset_Cu:
                 if (fwVersion_.MAJOR >= 3) {
-                    status = sendCommand("-settings Cu");
+                    status |= sendCommand("-settings Cu");
                 } else {
-                    status = sendCommand("-settings StdCu");
+                    status |= sendCommand("-settings StdCu");
                 }
                 break;
 
             case SettingPreset_Mo:
                 if (fwVersion_.MAJOR >= 3) {
-                    status = sendCommand("-settings Mo");
+                    status |= sendCommand("-settings Mo");
                 } else {
-                    status = sendCommand("-settings StdMo");
+                    status |= sendCommand("-settings StdMo");
                 }
                 break;
 
             case SettingPreset_Ag:
                 if (fwVersion_.MAJOR >= 3) {
-                    status = sendCommand("-settings Ag");
+                    status |= sendCommand("-settings Ag");
                 } else {
-                    return asynError; // TODO Unsupported on older firmwares
+                    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                            "%s: Ag setting is not supported on this version"
+                            "of firmware (%s)",
+                            driverName, &(fwVersion_.version_str[0]));
+                    return asynError;
                 }
                 break;
 
             case SettingPreset_Cr:
                 if (fwVersion_.MAJOR >= 3) {
-                    status = sendCommand("-settings Cr");
+                    status |= sendCommand("-settings Cr");
                 } else {
-                    status = sendCommand("-settings HgCr");
+                    status |= sendCommand("-settings HgCr");
                 }
                 break;
 
             default:
-                // TODO this is probably not what we want here
-                status = sendCommand("-reset");
-                break;
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s: Unknown setting %d, nothing was done.",
+                    driverName, value);
+                return asynError;
         }
     }
+
+    if (status != asynSuccess) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s: Unable to set the settings to %d.",
+                driverName, value);
+        return asynError;
+    }
+
     setIntegerParam(SDSetting,value);
 
     callParamCallbacks();
 
-    return status;
+    return asynSuccess;
 }
 
 /**Sets the detector back to default settings. This command takes
@@ -770,9 +719,8 @@ asynStatus mythen::setReset()
 
 
 /** Reads the values of all the modules parameters, sets them in the parameter library**/
-asynStatus mythen::getSettings()
+asynStatus mythen::getSettings() // TODO REFACTOR
 {
-    /* TODO this can be separated into functions */
     int aux;
     epicsFloat32 faux;
     long long laux;
@@ -780,36 +728,36 @@ asynStatus mythen::getSettings()
     Result<epicsInt32> res;
     Result<epicsFloat32> fres;
     Result<long long> lres;
-    char outString[MAX_COMMAND_LEN]; // TODO this is bad.
 
     static const char *functionName = "getSettings";
 
     if (acquiring_) {
-        strcpy(outString, "Called during Acquire");
-        inString_[0] = 0;
-        goto error;
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s%s: Cannot update settings while acquiring.",
+                driverName, functionName);
+        return asynError;
     }
 
-    res = writeReadInt32("-get flatfieldcorrection");
+    res = writeReadNumeric<epicsInt32>("-get flatfieldcorrection");
     if (res.status != asynSuccess) goto error;
     aux = res.value;
     if (aux!=0 && aux!=1) goto error;
     setIntegerParam(SDUseFlatField, aux);
 
 
-    res = writeReadInt32("-get badchannelinterpolation");
+    res = writeReadNumeric<epicsInt32>("-get badchannelinterpolation");
     if (res.status != asynSuccess) goto error;
     aux = res.value;
     if (aux!=0 && aux!=1) goto error;
     setIntegerParam(SDUseBadChanIntrpl, aux);
 
-    res = writeReadInt32("-get ratecorrection");
+    res = writeReadNumeric<epicsInt32>("-get ratecorrection");
     if (res.status != asynSuccess) goto error;
     aux = res.value;
     if (aux!=0 && aux!=1) goto error;
     setIntegerParam(SDUseCountRate, aux);
 
-    res = writeReadInt32("-get nbits");
+    res = writeReadNumeric<epicsInt32>("-get nbits");
     if (res.status != asynSuccess) goto error;
     aux = res.value;
     if (aux < 0) goto error;
@@ -817,7 +765,7 @@ asynStatus mythen::getSettings()
     chanperline_ = 32/aux;
     setIntegerParam(SDBitDepth, aux);
 
-    res = writeReadInt32("-get time");
+    res = writeReadNumeric<epicsInt32>("-get time");
     if (res.status != asynSuccess) goto error;
     aux = res.value;
     if (aux >= 0) DetTime = (aux * (1E-7));
@@ -825,19 +773,19 @@ asynStatus mythen::getSettings()
     setDoubleParam(ADAcquireTime,DetTime);
 
 
-    res = writeReadInt32("-get frames");
+    res = writeReadNumeric<epicsInt32>("-get frames");
     if (res.status != asynSuccess) goto error;
     aux = res.value;
     if (aux >= 0) setIntegerParam(SDNumFrames, aux);
 
-    fres = writeReadFloat32("-get tau");
+    fres = writeReadNumeric<epicsFloat32>("-get tau");
     if (fres.status != asynSuccess) goto error;
     faux = fres.value;
     if (faux == -1 || faux > 0) setDoubleParam(SDTau,faux);
     else goto error;
 
 
-    fres = writeReadFloat32("-get kthresh");
+    fres = writeReadNumeric<epicsFloat32>("-get kthresh");
     if (fres.status != asynSuccess) goto error;
     faux = fres.value;
     if (faux < 0) goto error;
@@ -846,13 +794,13 @@ asynStatus mythen::getSettings()
 
     //Firmware greater than 3 commands
     if (fwVersion_.MAJOR >= 3) {
-        fres = writeReadFloat32("-get energy");
+        fres = writeReadNumeric<epicsFloat32>("-get energy");
         if (fres.status != asynSuccess) goto error;
         faux = fres.value;
         if (faux < 0) goto error;
         else setDoubleParam(SDEnergy,faux);
 
-        lres = writeReadInt64("-get delafter");
+        lres = writeReadNumeric<long long>("-get delafter");
         if (lres.status != asynSuccess) goto error;
         laux = lres.value;
         if (laux >= 0) DetTime = (laux * (1E-7));
@@ -861,14 +809,14 @@ asynStatus mythen::getSettings()
 
 
         /* Get trigger modes */
-        res = writeReadInt32("-get conttrig");
+        res = writeReadNumeric<epicsInt32>("-get conttrig");
         if (res.status != asynSuccess) goto error;
         aux = res.value;
         if (aux < 0) goto error;
         if (aux == 1)
             setIntegerParam(SDTrigger, 2);
         else {
-            res = writeReadInt32("-get trig");
+            res = writeReadNumeric<epicsInt32>("-get trig");
             if (res.status != asynSuccess) goto error;
             aux = res.value;
             if (aux < 0) goto error;
@@ -885,8 +833,8 @@ asynStatus mythen::getSettings()
 
 error:
     asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-            "%s:%s: error, outString=%s, inString=%s\n",
-            driverName, functionName, outString, inString_);
+            "%s:%s: error", // TODO this is now completely non-helpful
+            driverName, functionName);
     return asynError;
 }
 
@@ -915,14 +863,14 @@ void mythen::acquisitionTask()
         getIntegerParam(ADAcquire, &acquire);
 
         /* If we are not acquiring then wait for a semaphore that is given when acquisition is started */
-        if (!acquire || !acquiring_) {
+        if (not acquire || not acquiring_) {
             setIntegerParam(ADStatus, ADStatusIdle);
             callParamCallbacks();
             /* Release the lock while we wait for an event that says acquire has started, then lock again */
             asynPrint(this->pasynUserSelf, ASYN_TRACE_FLOW,
                     "%s:%s: waiting for acquire to start\n", driverName, functionName);
             this->unlock();
-            eventStatus = epicsEventWait(this->startEventId_);
+            eventStatus = epicsEventWait(startEventId_);
 
             if (readmode_==0)       //Raw Mode
                 nread_expect = sizeof(epicsInt32)*nmodules_*(1280/chanperline_);
@@ -934,7 +882,7 @@ void mythen::acquisitionTask()
             eventStatus = getStatus();
             setIntegerParam(ADStatus, eventStatus);
 
-            if (eventStatus!=ADStatusError) {
+            if (eventStatus != ADStatusError) {
 
                 getDoubleParam(ADAcquireTime,&acquireTime);
 
@@ -959,7 +907,7 @@ void mythen::acquisitionTask()
                         this->lock();
                         dataOK = dataCallback(detArray);
                         this->unlock();
-                        if (!dataOK) {
+                        if (not dataOK) {
                             eventStatus = getStatus();
                             setIntegerParam(ADStatus, eventStatus);
                         }
@@ -1001,7 +949,7 @@ void mythen::acquisitionTask()
             callParamCallbacks();
         }
     }
-    free (detArray); // TODO will never be called
+    free (detArray); // TODO: Never reached
 }
 
 epicsInt32 mythen::dataCallback(epicsUInt32 *pData)
@@ -1140,7 +1088,7 @@ asynStatus mythen::writeOctet(asynUser *pasynUser, const char *value,
 
     /* If this is not a parameter we have handled call the base class */
     if (function < FIRST_SD_PARAM) {
-        status = ADDriver::writeOctet(pasynUser, value,nChars, nActual);
+        status |= ADDriver::writeOctet(pasynUser, value,nChars, nActual);
     }
 
     /* Update any changed parameters */
@@ -1149,7 +1097,7 @@ asynStatus mythen::writeOctet(asynUser *pasynUser, const char *value,
     if (status) {
         asynPrint(pasynUser, ASYN_TRACE_ERROR,
                 "%s:%s: error, status=%d function=%d, value=%s\n",
-                driverName, functionName, status, function, value);
+                driverName, functionName, (asynStatus)status, function, value);
     } else {
         asynPrint(pasynUser, ASYN_TRACEIO_DRIVER,
                 "%s:%s: function=%d, value=%s\n",
@@ -1157,7 +1105,7 @@ asynStatus mythen::writeOctet(asynUser *pasynUser, const char *value,
     }
 
     *nActual = nChars;
-    return((asynStatus)status);
+    return (asynStatus)status;
 }
 
 /** Called when asyn clients call pasynInt32->write().
@@ -1197,22 +1145,18 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
     } else if (function == SDBitDepth) {
         status |= setBitDepth(value);
     } else if (function == SDNumGates) {
-        status = setNumGates(value);
+        status |= setNumGates(value);
     } else if (function == SDUseGates) {
-        status = setUseGates(value);
-    } else if (function == SDNumFrames) {
-        status |= setFrames(value);
+        status |= setUseGates(value);
     } else if (function == SDTrigger) {
         status |= setTrigger(value);
     } else if (function == SDReset) {
         status |= setReset();
-    } else if (function == ADImageMode) {
-        status |= setFrames(frames_);
     } else if (function < FIRST_SD_PARAM) {
         /* If this is not a parameter we have handled call the base class */
         status |= ADDriver::writeInt32(pasynUser, value);
     } else {
-        status = asynError; // TODO
+        status = asynError;
     }
 
     status |= getSettings();
@@ -1220,16 +1164,18 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
     /* Update any changed parameters */
     status |= callParamCallbacks();
 
-    if (status) {
+    if (status != asynSuccess) {
         asynPrint(pasynUser, ASYN_TRACE_ERROR,
                 "%s:%s: error, status=%d function=%d, value=%d\n",
-                driverName, functionName, status, function, value);
+                driverName, functionName, (asynStatus)status, function, value);
+        return asynError;
     } else {
         asynPrint(pasynUser, ASYN_TRACEIO_DRIVER,
                 "%s:%s: function=%d, value=%d\n",
                 driverName, functionName, function, value);
     }
-    return((asynStatus)status);
+
+    return asynSuccess;
 }
 
 /** Called when asyn clients call pasynFloat64->write().
@@ -1270,7 +1216,7 @@ asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
         /* If this is not a parameter we have handled call the base class */
         status = ADDriver::writeFloat64(pasynUser, value);
     } else {
-        status = asynError; // TODO
+        status = asynError;
     }
 
     status |= getSettings();
@@ -1278,16 +1224,17 @@ asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
     /* Update any changed parameters */
     status |= callParamCallbacks();
 
-    if (status) {
+    if (status != asynSuccess) {
         asynPrint(pasynUser, ASYN_TRACE_ERROR,
                 "%s:%s: error, status=%d function=%d, value=%g\n",
-                driverName, functionName, status, function, value);
+                driverName, functionName, (asynStatus)status, function, value);
+        return asynError;
     } else {
         asynPrint(pasynUser, ASYN_TRACEIO_DRIVER,
                 "%s:%s: function=%d, value=%g\n",
                 driverName, functionName, function, value);
     }
-    return((asynStatus)status);
+    return asynSuccess;
 }
 
 
@@ -1312,14 +1259,6 @@ void mythen::report(FILE *fp, int details)
     ADDriver::report(fp, details);
 }
 
-extern "C" int mythenConfig(const char *portName, const char *IPPortName,
-        int maxBuffers, size_t maxMemory,
-        int priority, int stackSize)
-{
-    new mythen(portName, IPPortName,
-            maxBuffers, maxMemory, priority, stackSize);
-    return(asynSuccess);
-}
 
 /** Constructor for mythen driver; most parameters are simply passed to ADDriver::ADDriver.
  * After calling the base class constructor this method creates a thread to collect the detector data,
@@ -1345,11 +1284,9 @@ mythen::mythen(const char *portName, const char *IPPortName,
     int status = asynSuccess;
     const char *functionName = "mythen";
 
-    IPPortName_ = epicsStrDup(IPPortName);
-
     /* Create the epicsEvents for signaling to the mythen task when acquisition starts and stops */
     this->startEventId_ = epicsEventCreate(epicsEventEmpty);
-    if (!this->startEventId_) {
+    if (not this->startEventId_) {
         printf("%s:%s epicsEventCreate failure for start event\n",
                 driverName, functionName);
         return;
@@ -1359,7 +1296,8 @@ mythen::mythen(const char *portName, const char *IPPortName,
     status = pasynOctetSyncIO->connect(IPPortName, 0, &pasynUserMeter_, NULL);
     if (status) {
         printf("%s:%s: error calling pasynOctetSyncIO->connect, status=%d, error=%s\n",
-                driverName, functionName, status, pasynUserMeter_->errorMessage);
+                driverName, functionName, (asynStatus)status, 
+                pasynUserMeter_->errorMessage);
         return;
     }
 
@@ -1388,12 +1326,14 @@ mythen::mythen(const char *portName, const char *IPPortName,
     status |= setStringParam (SDFirmwareVersion, &(fwVersion_.version_str[0]));
 
     int sensorSizeX = MAX_DIMS;
-    int  sensorSizeY = 1;
+    int sensorSizeY = 1;
     status |= setIntegerParam(ADMaxSizeX, sensorSizeX);
     status |= setIntegerParam(ADMaxSizeY, sensorSizeY);
 
-    int minX,  minY, sizeX, sizeY;
-    minX = 1; minY = 1; sizeX = MAX_DIMS; sizeY = 1;
+    int minX = 1;
+    int minY = 1;
+    int sizeX = MAX_DIMS;
+    int sizeY = 1;
     status |= setIntegerParam(ADMinX,  minX);
     status |= setIntegerParam(ADMinY,  minY);
     status |= setIntegerParam(ADSizeX, sizeX);
@@ -1415,13 +1355,13 @@ mythen::mythen(const char *portName, const char *IPPortName,
 
     int aux;
     //get nmodules and check for errors
-    Result<epicsInt32> res = writeReadInt32("-get nmodules");
+    Result<epicsInt32> res = writeReadNumeric<epicsInt32>("-get nmodules");
     status |= res.status;
     aux = res.value;
     if (aux < 0) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error, -get nmodules, inString=%s\n",
-                driverName, functionName, inString_);
+                "%s:%s: error, -get nmodules",
+                driverName, functionName);
         return;
     }
     nmodules_ = aux;
@@ -1429,17 +1369,28 @@ mythen::mythen(const char *portName, const char *IPPortName,
 
     callParamCallbacks();
 
-    if (status) {
+    if (status != asynSuccess) {
         printf("%s: unable to read camera parameters\n", functionName);
         return;
     }
 
     /* Create the thread that runs acquisition */
-    status = (epicsThreadCreate("acquisitionTask",
+    epicsThreadCreate("acquisitionTask",
                 epicsThreadPriorityMedium,
                 epicsThreadGetStackSize(epicsThreadStackMedium),
                 (EPICSTHREADFUNC)acquisitionTaskC,
-                this) == NULL);
+                this);
+}
+
+} // namespace mythen
+
+extern "C" int mythenConfig(const char *portName, const char *IPPortName,
+        int maxBuffers, size_t maxMemory,
+        int priority, int stackSize)
+{
+    new mythen::mythen(portName, IPPortName,
+            maxBuffers, maxMemory, priority, stackSize);
+    return asynSuccess;
 }
 
 /* Code for iocsh registration */
