@@ -255,7 +255,7 @@ class mythen : public ADDriver {
 asynStatus mythen::sendCommand(const char * format, ...)
 {
     va_list args;
-    const char *functionName="sendCommand";
+    const char *functionName = "sendCommand";
     char outString[MAX_COMMAND_LEN];
 
     va_start(args, format);
@@ -843,11 +843,11 @@ asynStatus mythen::getSettings()
         }
 
         callParamCallbacks();
-
         return asynSuccess;
+
     } catch (const MythenConnectionError& e) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s%s: Connection error happened while reading settting: %s.\n",
+                "%s%s: Connection error happened while reading setting: %s.\n",
                 driverName, functionName, e.what());
         return asynError;
     }
@@ -859,26 +859,23 @@ void acquisitionTaskC(void *drvPvt)
     pPvt->acquisitionTask();
 }
 
-void mythen::acquisitionTask()
+void mythen::acquisitionTask() // TODO Refactor as this is unreadable
 {
-    size_t nread, nread_expect;
-    size_t nwrite;
-    int eventStatus = 0;
-    int imageMode;
-    epicsInt32 acquire, eomReason;
-    double acquireTime;
-    asynStatus status = asynSuccess;
-    int dataOK;
-
     static const char *functionName = "acquisitionTask";
-    this->lock();
 
+    this->lock();
     while (1) {
-        epicsUInt32 *detArray = (epicsUInt32*) malloc(nmodules_*1280*sizeof(epicsInt32));
+        epicsInt32 acquire;
+        epicsInt32 eventStatus = getStatus();
+
         getIntegerParam(ADAcquire, &acquire);
 
         /* If we are not acquiring then wait for a semaphore that is given when acquisition is started */
-        if (not acquire || not acquiring_) {
+        if (not acquire || not acquiring_) { // TODO: This OR inbetween seems wrong
+            int dataOK;
+            size_t nread_expect;
+            std::string read_cmd;
+
             setIntegerParam(ADStatus, ADStatusIdle);
             callParamCallbacks();
             /* Release the lock while we wait for an event that says acquire has started, then lock again */
@@ -887,36 +884,35 @@ void mythen::acquisitionTask()
             this->unlock();
             eventStatus = epicsEventWait(startEventId_);
 
-            if (readmode_==0)       //Raw Mode
+            if (readmode_ == 0) {       //Raw Mode
                 nread_expect = sizeof(epicsInt32)*nmodules_*(1280/chanperline_);
-            else
+                read_cmd = "-readoutraw";
+            } else {
                 nread_expect = sizeof(epicsInt32)*nmodules_*(1280);
+                read_cmd = "-readout";
+            }
 
             dataOK = 1;
-
             eventStatus = getStatus();
             setIntegerParam(ADStatus, eventStatus);
 
             if (eventStatus != ADStatusError) {
+                size_t nread;
+                size_t nwrite;
+                asynStatus status = asynSuccess;
+                epicsFloat64 acquireTime;
+                epicsUInt32 *detArray = (epicsUInt32*) malloc(nmodules_*1280*sizeof(epicsInt32));
 
-                getDoubleParam(ADAcquireTime,&acquireTime);
+                getDoubleParam(ADAcquireTime, &acquireTime);
 
                 // Work on the cases of what are you getting from getstatus
                 do {
-                    nread=0;
-                    if (readmode_==0) {
-                        //Timeout is M1K_TIMEOUT + AcquireTime
-                        status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
-                                "-readoutraw", sizeof "-readoutraw", (char *)detArray,
-                                nread_expect, M1K_TIMEOUT+acquireTime, &nwrite,
-                                &nread, &eomReason);
-                    } else {
-                        //Timeout is M1K_TIMEOUT + AcquireTime
-                        status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
-                                "-readout", sizeof "-readout", (char *)detArray,
-                                nread_expect, M1K_TIMEOUT+acquireTime, &nwrite,
-                                &nread, &eomReason);
-                    }
+                    int eomReason;
+
+                    status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
+                            read_cmd.c_str(), sizeof read_cmd.c_str(), (char *)detArray,
+                            nread_expect, M1K_TIMEOUT+acquireTime, &nwrite,
+                            &nread, &eomReason);
 
                     if(nread == nread_expect) {
                         this->lock();
@@ -928,8 +924,7 @@ void mythen::acquisitionTask()
                         }
 
                     } else {
-                        eventStatus = getStatus();
-                        setIntegerParam(ADStatus, eventStatus);
+                        setIntegerParam(ADStatus, getStatus());
                     }
 
                     if(status != asynSuccess) {
@@ -937,14 +932,14 @@ void mythen::acquisitionTask()
                                 "%s:%s: error using readout command status=%d, nRead=%d, eomReason=%d\n",
                                 driverName, functionName, status, (int)nread, eomReason);
                     }
-                }
-                while (status == asynSuccess && (eventStatus==ADStatusAcquire||eventStatus==ADStatusReadout) && acquiring_);
-
+                } while (status == asynSuccess && (eventStatus==ADStatusAcquire||eventStatus==ADStatusReadout) && acquiring_);
+                free (detArray);
             }
             this->lock();
-
         }
         if (eventStatus != ADStatusError ) {
+            epicsInt32 imageMode;
+
             printf("Acquisition finish\n");
             getIntegerParam(ADImageMode, &imageMode);
             if (imageMode == ADImageSingle || imageMode == ADImageMultiple) {
@@ -963,7 +958,6 @@ void mythen::acquisitionTask()
             setIntegerParam(ADAcquire,  0);
             callParamCallbacks();
         }
-        free (detArray);
     }
 }
 
