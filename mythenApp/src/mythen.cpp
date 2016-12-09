@@ -45,6 +45,7 @@
 
 #include <epicsExport.h>
 
+#include <stdexcept>
 #include <vector>
 #include <climits>
 
@@ -79,6 +80,13 @@ static const char *driverName = "mythen";
 
 namespace mythen {
 
+class MythenConnectionError : public std::runtime_error {
+public:
+    MythenConnectionError(const char* error)
+        : std::runtime_error(error)
+    { };
+};
+
 /** 
  * Casts a byte array to the specific type and also swaps bytes if the host uses
  * big endian format.
@@ -102,30 +110,6 @@ T byteCast(char* str)
     }
     return value;
 }
-
-/**
- * Class that contains both the status of the communication and also the
- * output of the command.
- */
-template <class T>
-class Result {
-public:
-    /** Status of the communication */
-    asynStatus status;
-    /** Output value */
-    T value;
-    /** Default constructor */
-    Result() {}
-    /**
-     * Constructor
-     * \param s Communication status.
-     * \param val Output value.
-     */
-    Result (asynStatus s, T val)
-        : status(s),
-          value(val)
-    { }
-};
 
 /**
  * Mythen firmware version utility class.
@@ -251,8 +235,8 @@ class mythen : public ADDriver {
         asynStatus getFirmware();
         void decodeRawReadout(int nmods, int nbits, epicsUInt32 *data, epicsUInt32 *result);
         asynStatus sendCommand(const char* format, ...);
-        template <class T> Result<T> writeReadNumeric(const char* inString);
-        template <int N> Result<std::vector<char> > writeReadOctet(const char* inString);
+        template <class T> T writeReadNumeric(const char* inString);
+        template <int N> std::vector<char> writeReadOctet(const char* inString);
         epicsInt32 dataCallback(epicsUInt32 *pData);
 
         epicsEventId startEventId_;
@@ -266,6 +250,7 @@ class mythen : public ADDriver {
 };
 
 #define NUM_SD_PARAMS (&LAST_SD_PARAM - &FIRST_SD_PARAM + 1)
+
 
 /** Sends a command to the detector and reads the response.**/
 asynStatus mythen::sendCommand(const char * format, ...)
@@ -284,61 +269,58 @@ asynStatus mythen::sendCommand(const char * format, ...)
         return asynError;
     }
 
-    Result<epicsInt32> result = writeReadNumeric<epicsInt32>(outString);
-    if (result.status != asynSuccess) {
+    try {
+        epicsInt32 result = writeReadNumeric<epicsInt32>(outString);
+        if (result != 0) {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s:%s: error, command %s execution failed: expected 0, "
+                    "received %d.\n",
+                    driverName, functionName, outString, result);
+            return asynError;
+        }
+        return asynSuccess;
+    } catch (const MythenConnectionError& e) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error, command execution failed %s\n",
+                "%s:%s: error, Connection failed while issuing command %s.\n",
                 driverName, functionName, outString);
         return asynError;
-    } else if (result.value != 0) {
-        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error, expected 0, received %d\n",
-                driverName, functionName, result.value);
-        return asynError;
     }
-    return asynSuccess;
 }
 
 template <class T>
-Result<T> mythen::writeReadNumeric(const char * outString)
+T mythen::writeReadNumeric(const char * outString)
 {
     size_t nread, nwrite;
     int eomReason;
     char inString[sizeof(T)];
-    const char *functionName = "writeRead";
 
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
             strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
             &nwrite, &nread, &eomReason);
 
     if (status != asynSuccess) {
-        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error!\n",driverName, functionName);
-        return Result<T>(asynError, 0);
+        throw MythenConnectionError(outString);
     }
 
-    return Result<T>(status, byteCast<T>(inString));
+    return byteCast<T>(inString);
 }
 
 template <int N>
-Result<std::vector<char> > mythen::writeReadOctet(const char * outString)
+std::vector<char> mythen::writeReadOctet(const char * outString)
 {
     size_t nread, nwrite;
     int eomReason;
     std::vector<char> inString(N);
-    const char *functionName="writeReadOctet";
 
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
             outString, strlen(outString), &inString[0], 
             N, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
 
     if (status != asynSuccess) {
-        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error!\n",driverName, functionName);
-        return Result<std::vector<char> >(asynError, inString);
+        throw MythenConnectionError(outString);
     }
 
-    return Result<std::vector<char> >(status, inString);
+    return std::vector<char>(inString);
 }
 
 /** Starts and stops the acquisition. **/
@@ -541,66 +523,63 @@ asynStatus mythen::setNumGates(epicsInt32 value)
 /** Get Firmware Version **/
 asynStatus mythen::getFirmware()
 {
-    Result<std::vector<char> > fw_result = 
-        writeReadOctet<FIRMWARE_VERSION_LEN>("-get version");
-    if (fw_result.status != asynSuccess) {
+    try {
+        std::vector<char> fw_result =
+            writeReadOctet<FIRMWARE_VERSION_LEN>("-get version");
+        fwVersion_ = FirmwareVersion(fw_result);
+        return asynSuccess;
+    } catch (const MythenConnectionError& e) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s: Unable to read firmware version.\n",
                 driverName);
         return asynError;
     }
-
-    fwVersion_ = FirmwareVersion(fw_result.value);
-
-    return asynSuccess;
 }
 
 /** Get Acquition Status */
 epicsInt32 mythen::getStatus()
 {
     epicsInt32 detStatus;
-    epicsInt32 aux;
 
-    Result<epicsInt32> status_result = writeReadNumeric<epicsInt32>("-get status");
-    if (status_result.status != asynSuccess) {
+    try {
+        epicsInt32 aux = writeReadNumeric<epicsInt32>("-get status");
+        int m_status = aux & 1;       // Acquire running status when non-zero
+        int t_status = aux & (1<<3);  // Waiting for trigger when non-zero
+        int d_status = aux & (1<<16); // No Data Available when not zero
+        int triggerWaitCnt=0;
+        double triggerWait;
+
+        if (m_status || not d_status) {
+            detStatus = ADStatusAcquire;
+
+            triggerWaitCnt=0;
+            // Waits for Trigger for increasing amount of time for a total of 
+            // almost 1 minute
+            while ((t_status ) && (triggerWaitCnt<MAX_TRIGGER_TIMEOUT_COUNT)) {
+                triggerWait = 0.0001*pow(10.0,((double)(triggerWaitCnt/10)+1));
+                epicsThreadSleep(triggerWait);
+                aux = writeReadNumeric<epicsInt32>("-get status");
+                t_status = aux & (1<<3);
+                d_status = aux & (1<<16);
+                triggerWaitCnt++;
+            }
+
+            if (not d_status) {
+                detStatus = ADStatusReadout;
+            } else if (triggerWaitCnt>=MAX_TRIGGER_TIMEOUT_COUNT) {
+                detStatus = ADStatusError;
+            }
+        } else {
+            detStatus = ADStatusIdle;
+        }
+
+        return detStatus;
+    } catch (const MythenConnectionError& e) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s: Connection error: Unable to retrieve status.\n",
+                driverName);
         return ADStatusError;
     }
-    aux = status_result.value;
-    int m_status = aux & 1;       // Acquire running status (non-zero)
-    int t_status = aux & (1<<3);  // Waiting for trigger (non-zero)
-    int d_status = aux & (1<<16); // No Data Available when not zero
-    int triggerWaitCnt=0;
-    double triggerWait;
-
-    if (m_status || not d_status) {
-        detStatus = ADStatusAcquire;
-
-        triggerWaitCnt=0;
-        // Waits for Trigger for increasing amount of time for a total of 
-        // almost 1 minute
-        while ((t_status ) && (triggerWaitCnt<MAX_TRIGGER_TIMEOUT_COUNT)) {
-            triggerWait = 0.0001*pow(10.0,((double)(triggerWaitCnt/10)+1));
-            epicsThreadSleep(triggerWait);
-            status_result = writeReadNumeric<epicsInt32>("-get status");
-            if (status_result.status != asynSuccess) {
-                return ADStatusError;
-            }
-            aux = status_result.value;
-            t_status = aux & (1<<3);
-            d_status = aux & (1<<16);
-            triggerWaitCnt++;
-        }
-
-        if (not d_status) {
-            detStatus = ADStatusReadout;
-        } else if (triggerWaitCnt>=MAX_TRIGGER_TIMEOUT_COUNT) {
-            detStatus = ADStatusError;
-        }
-    } else {
-        detStatus = ADStatusIdle;
-    }
-
-    return detStatus;
 }
 
 /**Enables or disables the flipping of the channel numbering. **/
@@ -719,16 +698,8 @@ asynStatus mythen::setReset()
 
 
 /** Reads the values of all the modules parameters, sets them in the parameter library**/
-asynStatus mythen::getSettings() // TODO REFACTOR
+asynStatus mythen::getSettings()
 {
-    int aux;
-    epicsFloat32 faux;
-    long long laux;
-    epicsFloat64 DetTime;
-    Result<epicsInt32> res;
-    Result<epicsFloat32> fres;
-    Result<long long> lres;
-
     static const char *functionName = "getSettings";
 
     if (acquiring_) {
@@ -738,104 +709,147 @@ asynStatus mythen::getSettings() // TODO REFACTOR
         return asynError;
     }
 
-    res = writeReadNumeric<epicsInt32>("-get flatfieldcorrection");
-    if (res.status != asynSuccess) goto error;
-    aux = res.value;
-    if (aux!=0 && aux!=1) goto error;
-    setIntegerParam(SDUseFlatField, aux);
+    try {
+        int aux = 0;
+        epicsFloat32 faux = 0.;
+        long long laux = 0;
+        epicsFloat64 DetTime = 0.;
 
-
-    res = writeReadNumeric<epicsInt32>("-get badchannelinterpolation");
-    if (res.status != asynSuccess) goto error;
-    aux = res.value;
-    if (aux!=0 && aux!=1) goto error;
-    setIntegerParam(SDUseBadChanIntrpl, aux);
-
-    res = writeReadNumeric<epicsInt32>("-get ratecorrection");
-    if (res.status != asynSuccess) goto error;
-    aux = res.value;
-    if (aux!=0 && aux!=1) goto error;
-    setIntegerParam(SDUseCountRate, aux);
-
-    res = writeReadNumeric<epicsInt32>("-get nbits");
-    if (res.status != asynSuccess) goto error;
-    aux = res.value;
-    if (aux < 0) goto error;
-    nbits_ = aux;
-    chanperline_ = 32/aux;
-    setIntegerParam(SDBitDepth, aux);
-
-    res = writeReadNumeric<epicsInt32>("-get time");
-    if (res.status != asynSuccess) goto error;
-    aux = res.value;
-    if (aux >= 0) DetTime = (aux * (1E-7));
-    else goto error;
-    setDoubleParam(ADAcquireTime,DetTime);
-
-
-    res = writeReadNumeric<epicsInt32>("-get frames");
-    if (res.status != asynSuccess) goto error;
-    aux = res.value;
-    if (aux >= 0) setIntegerParam(SDNumFrames, aux);
-
-    fres = writeReadNumeric<epicsFloat32>("-get tau");
-    if (fres.status != asynSuccess) goto error;
-    faux = fres.value;
-    if (faux == -1 || faux > 0) setDoubleParam(SDTau,faux);
-    else goto error;
-
-
-    fres = writeReadNumeric<epicsFloat32>("-get kthresh");
-    if (fres.status != asynSuccess) goto error;
-    faux = fres.value;
-    if (faux < 0) goto error;
-    else setDoubleParam(SDThreshold,faux);
-
-
-    //Firmware greater than 3 commands
-    if (fwVersion_.MAJOR >= 3) {
-        fres = writeReadNumeric<epicsFloat32>("-get energy");
-        if (fres.status != asynSuccess) goto error;
-        faux = fres.value;
-        if (faux < 0) goto error;
-        else setDoubleParam(SDEnergy,faux);
-
-        lres = writeReadNumeric<long long>("-get delafter");
-        if (lres.status != asynSuccess) goto error;
-        laux = lres.value;
-        if (laux >= 0) DetTime = (laux * (1E-7));
-        else goto error;
-        setDoubleParam(SDDelayTime,DetTime);
-
-
-        /* Get trigger modes */
-        res = writeReadNumeric<epicsInt32>("-get conttrig");
-        if (res.status != asynSuccess) goto error;
-        aux = res.value;
-        if (aux < 0) goto error;
-        if (aux == 1)
-            setIntegerParam(SDTrigger, 2);
-        else {
-            res = writeReadNumeric<epicsInt32>("-get trig");
-            if (res.status != asynSuccess) goto error;
-            aux = res.value;
-            if (aux < 0) goto error;
-            if (aux == 1)
-                setIntegerParam(SDTrigger, 1);
-            else
-                setIntegerParam(SDTrigger, 0);
+        aux = writeReadNumeric<epicsInt32>("-get flatfieldcorrection");
+        if (aux!=0 && aux!=1) {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s%s: Invalid value %d received for flat field correction.",
+                    driverName, functionName, aux);
+            return asynError;
         }
+        setIntegerParam(SDUseFlatField, aux);
+
+
+        aux = writeReadNumeric<epicsInt32>("-get badchannelinterpolation");
+        if (aux!=0 && aux!=1) {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s%s: Invalid value %d received for interpolation of "
+                    "bad channels.",
+                    driverName, functionName, aux);
+            return asynError;
+        }
+        setIntegerParam(SDUseBadChanIntrpl, aux);
+
+        aux = writeReadNumeric<epicsInt32>("-get ratecorrection");
+        if (aux!=0 && aux!=1) {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s%s: Invalid value %d received for rate correction.",
+                    driverName, functionName, aux);
+            return asynError;
+        }
+        setIntegerParam(SDUseCountRate, aux);
+
+        aux = writeReadNumeric<epicsInt32>("-get nbits");
+        if (aux < 0) {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s%s: Invalid value %d received for nbits.",
+                    driverName, functionName, aux);
+            return asynError;
+        }
+        nbits_ = aux;
+        chanperline_ = 32/aux;
+        setIntegerParam(SDBitDepth, aux);
+
+        aux = writeReadNumeric<epicsInt32>("-get time");
+        if (aux >= 0) {
+            DetTime = (aux * (1E-7));
+        } else {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s%s: Invalid value %d received for exposure time.",
+                    driverName, functionName, aux);
+            return asynError;
+        }
+        setDoubleParam(ADAcquireTime, DetTime);
+
+
+        aux = writeReadNumeric<epicsInt32>("-get frames");
+        if (aux >= 0) {
+            setIntegerParam(SDNumFrames, aux);
+        }
+
+        faux = writeReadNumeric<epicsFloat32>("-get tau");
+        if (faux == -1 || faux > 0) {
+            setDoubleParam(SDTau, faux);
+        } else {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s%s: Invalid value %d received for tau.",
+                    driverName, functionName, aux);
+            return asynError;
+        }
+
+
+        faux = writeReadNumeric<epicsFloat32>("-get kthresh");
+        if (faux < 0) {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s%s: Invalid value %f received for threshold.",
+                    driverName, functionName, faux);
+            return asynError;
+        }
+        else setDoubleParam(SDThreshold,faux);
+
+        /* Newer versions of firmware provide additional commands. */
+        if (fwVersion_.MAJOR >= 3) {
+            faux = writeReadNumeric<epicsFloat32>("-get energy");
+            if (faux < 0) {
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s%s: Invalid value %f received for energy.",
+                        driverName, functionName, faux);
+                return asynError;
+            }
+            else setDoubleParam(SDEnergy,faux);
+
+            laux = writeReadNumeric<long long>("-get delafter");
+            if (laux >= 0) {
+                DetTime = (laux * (1E-7));
+            }
+            else {
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s%s: Invalid value %lld received for delay between "
+                        "frames.",
+                        driverName, functionName, laux);
+                return asynError;
+            }
+            setDoubleParam(SDDelayTime, DetTime);
+
+
+            /* Get trigger modes */
+            aux = writeReadNumeric<epicsInt32>("-get conttrig");
+            if (aux < 0) {
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s%s: Invalid value %d received for trigger.",
+                        driverName, functionName, aux);
+                return asynError;
+            } else if (aux == 1) {
+                setIntegerParam(SDTrigger, 2);
+            } else {
+                aux = writeReadNumeric<epicsInt32>("-get trig");
+                if (aux < 0) {
+                    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                            "%s%s: Invalid value %d received for trigger.",
+                            driverName, functionName, aux);
+                    return asynError;
+                } else if (aux == 1) {
+                    setIntegerParam(SDTrigger, 1);
+                } else {
+                    setIntegerParam(SDTrigger, 0);
+                }
+            }
+        }
+
+        callParamCallbacks();
+
+        return asynSuccess;
+    } catch (const MythenConnectionError& e) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s%s: Connection error happened while reading settting: %s.",
+                driverName, functionName, e.what());
+        return asynError;
     }
-
-    callParamCallbacks();
-
-    return asynSuccess;
-
-error:
-    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-            "%s:%s: error", // TODO this is now completely non-helpful
-            driverName, functionName);
-    return asynError;
 }
 
 void acquisitionTaskC(void *drvPvt)
@@ -848,7 +862,7 @@ void mythen::acquisitionTask()
 {
     size_t nread, nread_expect;
     size_t nwrite;
-    int eventStatus;
+    int eventStatus = 0;
     int imageMode;
     epicsInt32 acquire, eomReason;
     double acquireTime;
@@ -1353,19 +1367,20 @@ mythen::mythen(const char *portName, const char *IPPortName,
     // Read the current settings from the device.  This will set parameters in the parameter library.
     getSettings();
 
-    int aux;
-    //get nmodules and check for errors
-    Result<epicsInt32> res = writeReadNumeric<epicsInt32>("-get nmodules");
-    status |= res.status;
-    aux = res.value;
-    if (aux < 0) {
-        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s:%s: error, -get nmodules",
-                driverName, functionName);
-        return;
+    int aux = 0;
+    try {
+        aux = writeReadNumeric<epicsInt32>("-get nmodules");
+        if (aux < 0) {
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                    "%s:%s: error, -get nmodules",
+                    driverName, functionName);
+            return;
+        }
+        nmodules_ = aux;
+        status |= setIntegerParam(SDNModules, aux);
+    } catch (const MythenConnectionError& e) {
+        status |= asynError;
     }
-    nmodules_ = aux;
-    status |= setIntegerParam(SDNModules, aux);
 
     callParamCallbacks();
 
