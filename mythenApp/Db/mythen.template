@@ -32,6 +32,7 @@ record (mbbo, "$(P)$(R)Setting")
     field (VAL,  "0")
     field (PINI, "YES")
 }
+
 record (mbbi, "$(P)$(R)Setting_RBV")
 {
     field (DESC, "Detector setting")
@@ -47,6 +48,7 @@ record (mbbi, "$(P)$(R)Setting_RBV")
     field (THVL, "3")
     field (SCAN, "I/O Intr")
 }
+
 #----------------------------------
 # Delay after trigger
 #----------------------------------
@@ -94,6 +96,7 @@ record (ai, "$(P)$(R)ThresholdEnergy_RBV")
     field (PREC, "2")
     field (SCAN, "I/O Intr")
 }
+
 #----------------------------------
 # Beam Energy 
 #----------------------------------
@@ -141,6 +144,7 @@ record (bi, "$(P)$(R)UseFlatField_RBV")
     field (ONAM, "Enabled")
     field (SCAN, "I/O Intr")
 }
+
 #----------------------------------
 # Enable Count Rate Correction
 #----------------------------------
@@ -212,6 +216,7 @@ record (bi, "$(P)$(R)UseBadChanIntrpl_RBV")
     field (ONAM, "Enabled")
     field (SCAN, "I/O Intr")
 }
+
 #----------------------------------
 # Set Number of Data Bits
 #----------------------------------
@@ -287,25 +292,6 @@ record (longin, "$(P)$(R)NumGates_RBV")
 
 
 #----------------------------------
-# Number of Frames
-#----------------------------------
-record (longout, "$(P)$(R)NumFrames")
-{
-    field (DESC, "Number of frames")
-    field (DTYP, "asynInt32")
-    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_NUM_FRAMES")
-    field (VAL,  "1")
-    field (PINI, "YES")
-}
-
-record (longin, "$(P)$(R)NumFrames_RBV")
-{
-    field (DESC, "Number of frames")
-    field (DTYP, "asynInt32")
-    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_NUM_FRAMES")
-    field (SCAN, "I/O Intr")
-}
-#----------------------------------
 # Trigger Mode
 #----------------------------------
 record (mbbo, "$(P)$(R)TriggerMode")
@@ -322,6 +308,7 @@ record (mbbo, "$(P)$(R)TriggerMode")
     field (VAL,  "0")
     field (PINI, "YES")
 }
+
 record (mbbi, "$(P)$(R)TriggerMode_RBV")
 {
     field (DESC, "Detector Trigger mode")
@@ -387,17 +374,3 @@ record (mbbi, "$(P)$(R)ReadMode_RBV")
     field (SCAN, "I/O Intr")
 }
 
-record(mbbo, "$(P)$(R)ImageMode")
-{
-   field(PINI, "YES")
-   field(DTYP, "asynInt32")
-   field(OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))IMAGE_MODE")
-   field(ZRST, "Single")
-   field(ZRVL, "0")
-   field(ONST, "Multiple")
-   field(ONVL, "1")
-   field(TWST, "")
-   field(TWVL, "")
-   field(VAL,  "")
-   info(autosaveFields, "VAL")
-}
