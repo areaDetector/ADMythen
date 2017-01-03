@@ -290,6 +290,25 @@ record (longin, "$(P)$(R)NumGates_RBV")
     field (SCAN, "I/O Intr")
 }
 
+#----------------------------------
+# Number of Frames
+#----------------------------------
+record (longout, "$(P)$(R)NumFrames")
+{
+    field (DESC, "Number of frames")
+    field (DTYP, "asynInt32")
+    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_NUM_FRAMES")
+    field (VAL,  "1")
+    field (PINI, "YES")
+}
+
+record (longin, "$(P)$(R)NumFrames_RBV")
+{
+    field (DESC, "Number of frames")
+    field (DTYP, "asynInt32")
+    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_NUM_FRAMES")
+    field (SCAN, "I/O Intr")
+}
 
 #----------------------------------
 # Trigger Mode
@@ -339,11 +358,22 @@ record (longin, "$(P)$(R)NumModules_RBV")
 #----------------------------------
 # Firmware Version
 #----------------------------------
-record(stringin, "$(P)$(R)FirmwareVersion")
+record(stringin, "$(P)$(R)FirmwareVersion_RBV")
 {
    field(PINI, "YES")
+   field(SCAN, "I/O Intr")
    field(DTYP, "asynOctetRead")
    field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_FIRMWARE_VERSION")
+}
+
+#----------------------------------
+# Serial Number
+#----------------------------------
+record(ai, "$(P)$(R)SerialNumber_RBV")
+{
+   field(PINI, "YES")
+   field(DTYP, "asynInt32")
+   field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_SERIAL_NUMBER")
 }
 
 #----------------------------------
@@ -374,3 +404,27 @@ record (mbbi, "$(P)$(R)ReadMode_RBV")
     field (SCAN, "I/O Intr")
 }
 
+record (ao, "$(P)$(R)Gain")
+{
+    field(DISA, "1")
+}
+
+record (ao, "$(P)$(R)ShutterCloseDelay")
+{
+    field(DISA, "1")
+}
+
+record (ao, "$(P)$(R)ShutterOpenDelay")
+{
+    field(DISA, "1")
+}
+
+record (ao, "$(P)$(R)Temperature")
+{
+    field(DISA, "1")
+}
+
+record (ao, "$(P)$(R)AcquirePeriod")
+{
+    field(DISA, "1")
+}
