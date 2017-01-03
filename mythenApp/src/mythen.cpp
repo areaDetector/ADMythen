@@ -73,7 +73,6 @@
 #define SDNModulesString         "SD_NMODULES"
 #define SDFirmwareVersionString  "SD_FIRMWARE_VERSION"
 #define SDSerialNumberString     "SD_SERIAL_NUMBER"
-#define SDReadModeString         "SD_READ_MODE"
 
 namespace mythen {
 
@@ -184,7 +183,6 @@ class mythen : public ADDriver {
         int SDTau;
         int SDFirmwareVersion;
         int SDSerialNumber;
-        int SDReadMode;
         int SDNModules;
 #define LAST_SD_PARAM SDNModules
 
@@ -231,19 +229,12 @@ class mythen : public ADDriver {
             TriggerMode_Continuous = 2
         };
 
-        enum ReadMode {
-            ReadMode_Raw = 0,
-            ReadMode_Corrected = 1
-        };
-
-
     private:
         epicsEvent startEvent_;
         asynUser *pasynUserMeter_;
         epicsInt32 chanperline_;
         epicsInt32 nbits_;
         epicsInt32 nmodules_;
-        epicsInt32 readmode_;
         FirmwareVersion fwVersion_;
         bool acquiring_;
         size_t frames_;
@@ -1038,17 +1029,10 @@ static void acquisitionTaskC(void *drvPvt)
  */
 asynStatus mythen::readoutFrames(size_t nFrames)
 {
-    size_t nread_expect;
-    std::string read_cmd;
     const char* functionName = "readoutFrames";
 
-    if (readmode_ == ReadMode_Raw) {
-        nread_expect = sizeof(epicsInt32)*nmodules_*(1280/chanperline_);
-        read_cmd = "-readoutraw";
-    } else {
-        nread_expect = sizeof(epicsInt32)*nmodules_*(1280);
-        read_cmd = "-readout";
-    }
+    size_t nread_expect = sizeof(epicsInt32)*nmodules_*(1280/chanperline_);
+    std::string read_cmd = "-readoutraw";
 
     epicsUInt32 *detArray =
         (epicsUInt32*) malloc(nmodules_*1280*sizeof(epicsInt32));
@@ -1176,11 +1160,7 @@ bool mythen::dataCallback(epicsUInt32 *pData)
 
     // Allocate a new image buffer
     pImage = this->pNDArrayPool->alloc(ndims, dims, NDInt32, totalBytes, NULL);
-    if (readmode_ == ReadMode_Raw) {
-        decodeRawReadout(nmodules_, nbits_, pData, (epicsUInt32 *)pImage->pData);
-    } else {
-        decodeRawReadout(nmodules_, 24, pData, (epicsUInt32 *)pImage->pData);
-    }
+    decodeRawReadout(nmodules_, nbits_, pData, (epicsUInt32 *)pImage->pData);
 
     pImage->dataType = NDUInt32;
     pImage->ndims = ndims;
@@ -1349,10 +1329,7 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
     status |= setIntegerParam(function, value);
 
     if (function == ADAcquire) {
-        getIntegerParam(SDReadMode, &readmode_);
         return setAcquire(value); // settings should not be updated
-    } else if (function == SDReadMode) {
-        // Nothing to be done except setting the parameter.
     } else if (function == SDSetting) {
         status |= loadSettings(value);
     } else if (function == SDUseFlatField) {
@@ -1541,7 +1518,6 @@ mythen::mythen(const char *portName, const char *IPPortName,
     createParam(SDNModulesString,         asynParamInt32,   &SDNModules);
     createParam(SDFirmwareVersionString,  asynParamOctet,   &SDFirmwareVersion);
     createParam(SDSerialNumberString,     asynParamInt32,   &SDSerialNumber);
-    createParam(SDReadModeString,         asynParamInt32,   &SDReadMode);
 
     status =  setStringParam (ADManufacturer, "Dectris");
     status |= setStringParam (ADModel,        "Mythen");

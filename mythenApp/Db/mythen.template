@@ -376,34 +376,6 @@ record(ai, "$(P)$(R)SerialNumber_RBV")
    field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_SERIAL_NUMBER")
 }
 
-#----------------------------------
-# Read Mode
-#----------------------------------
-record (mbbo, "$(P)$(R)ReadMode")
-{
-    field (DESC, "Readout Type")
-    field (DTYP, "asynInt32")
-    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_READ_MODE")
-    field (ZRST, "Raw")
-    field (ZRVL, "0")
-    field (ONST, "Corrected")
-    field (ONVL, "1")
-    field (VAL,  "0")
-    field (PINI, "YES")
-}
-
-record (mbbi, "$(P)$(R)ReadMode_RBV")
-{
-    field (DESC, "Read Mode Setting RBV")
-    field (DTYP, "asynInt32")
-    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_READ_MODE")
-    field (ZRST, "Raw")
-    field (ZRVL, "0")
-    field (ONST, "Corrected")
-    field (ONVL, "1")
-    field (SCAN, "I/O Intr")
-}
-
 record (ao, "$(P)$(R)Gain")
 {
     field(DISA, "1")
