@@ -205,7 +205,7 @@ class mythen : public ADDriver {
         asynStatus loadSettings(epicsInt32 value);
         asynStatus setReset();
         asynStatus getSettings();
-        epicsInt32 getSerialNumber();
+        asynStatus getSerialNumber();
         epicsInt32 getStatus();
         asynStatus getFirmware();
         asynStatus readoutFrames(size_t nFrames);
@@ -238,6 +238,7 @@ class mythen : public ADDriver {
         FirmwareVersion fwVersion_;
         bool acquiring_;
         size_t frames_;
+        epicsInt32 serial_;
 };
 
 #define NUM_SD_PARAMS (&LAST_SD_PARAM - &FIRST_SD_PARAM + 1)
@@ -612,15 +613,21 @@ asynStatus mythen::setNumFrames(epicsInt32 value)
     return sendCommand("-frames %d", value);
 }
 
-epicsInt32 mythen::getSerialNumber()
+/**
+ * Gets serial number from the device and saves it to internal state.
+ * 
+ * \return asynSuccess on successful get, asynError otherwise.
+ */
+asynStatus mythen::getSerialNumber()
 {
     try {
-        return writeReadNumeric<epicsInt32>("-get systemnum");
+        serial_ = writeReadNumeric<epicsInt32>("-get systemnum");
+        return asynSuccess;
     } catch (const MythenConnectionError& e) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s: Connection error: Unable to retrieve serial number.\n",
                 driverName);
-        return -1;
+        return asynError;
     }
 }
 
@@ -1526,6 +1533,7 @@ mythen::mythen(const char *portName, const char *IPPortName,
     status |= setStringParam (SDFirmwareVersion, fwVersion_.c_str());
 
     status |= getSerialNumber();
+    status |= setIntegerParam(SDSerialNumber, serial_);
 
     status |= setIntegerParam(ADMaxSizeX, MAX_DIMS);
     status |= setIntegerParam(ADMaxSizeY, 1);
