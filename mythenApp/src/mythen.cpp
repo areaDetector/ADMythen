@@ -310,6 +310,7 @@ T mythen::writeReadNumeric(const char * outString) const
     int eomReason;
     char inString[sizeof(T)];
 
+    printf("DEBUG WRN: sending command %s\n", outString);
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
             strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
             &nwrite, &nread, &eomReason);
@@ -328,6 +329,7 @@ std::string mythen::writeReadOctet(const char * outString) const
     int eomReason;
     char inString[N];
 
+    printf("DEBUG WRO: sending command %s\n", outString);
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
             outString, strlen(outString), inString, 
             N, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
@@ -923,35 +925,6 @@ asynStatus mythen::getSettings()
         }
         setDoubleParam(ADAcquireTime, DetTime);
 
-        aux = writeReadNumeric<epicsInt32>("-get gates");
-        if (aux < 0) {
-            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                    "%s%s: Invalid value %d received number of gates.\n",
-                    driverName, functionName, aux);
-            return asynError;
-        }
-        setIntegerParam(SDNumGates, aux);
-
-        aux = writeReadNumeric<epicsInt32>("-get gate");
-        if (aux != 0 || aux != 1) {
-            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                    "%s%s: Invalid value %d received for gate enabled.\n",
-                    driverName, functionName, aux);
-            return asynError;
-        }
-        setIntegerParam(SDUseGates, aux);
-
-
-        aux = writeReadNumeric<epicsInt32>("-get frames");
-        if (aux >= 0) {
-            setIntegerParam(SDNumFrames, aux);
-            frames_ = aux;
-        } else {
-            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                    "%s%s: Invalid value %d received number of frames.\n",
-                    driverName, functionName, aux);
-            return asynError;
-        }
 
         faux = writeReadNumeric<epicsFloat32>("-get tau");
         if (faux == -1 || faux > 0) {
@@ -975,6 +948,35 @@ asynStatus mythen::getSettings()
 
         // Newer versions of firmware provide additional commands.
         if (fwVersion_.major() >= 3) {
+            aux = writeReadNumeric<epicsInt32>("-get gates");
+            if (aux < 0) {
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s%s: Invalid value %d received number of gates.\n",
+                        driverName, functionName, aux);
+                return asynError;
+            }
+            setIntegerParam(SDNumGates, aux);
+
+            aux = writeReadNumeric<epicsInt32>("-get gate");
+            if (aux != 0 || aux != 1) {
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s%s: Invalid value %d received for gate enabled.\n",
+                        driverName, functionName, aux);
+                return asynError;
+            }
+            setIntegerParam(SDUseGates, aux);
+
+
+            aux = writeReadNumeric<epicsInt32>("-get frames");
+            if (aux >= 0) {
+                setIntegerParam(SDNumFrames, aux);
+                frames_ = aux;
+            } else {
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s%s: Invalid value %d received number of frames.\n",
+                        driverName, functionName, aux);
+                return asynError;
+            }
             // TODO for this command the device returns nmodules_ floats
             faux = writeReadNumeric<epicsFloat32>("-get energy");
             if (faux < 0) {
@@ -1066,6 +1068,7 @@ asynStatus mythen::readoutFrames(size_t nFrames)
 
         getDoubleParam(ADAcquireTime, &acquireTime);
 
+        printf("DEBUG STATUS: sending command %s\n", read_cmd.c_str());
         status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
                 read_cmd.c_str(), sizeof read_cmd.c_str(),
                 (char *)detArray, nread_expect,
