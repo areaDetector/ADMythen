@@ -50,30 +50,6 @@ record (mbbi, "$(P)$(R)Setting_RBV")
 }
 
 #----------------------------------
-# Delay after trigger
-#----------------------------------
-record(ao, "$(P)$(R)DelayTime")
-{
-    field (DESC, "Delay after trigger")
-    field (DTYP, "asynFloat64")
-    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_DELAY_TIME")
-    field (EGU,  "s")
-    field (PREC, "4")
-    field (VAL,  "0.1")
-    field (PINI, "YES")
-}
-
-record(ai, "$(P)$(R)DelayTime_RBV")
-{
-    field(DESC, "Delay after trigger")
-    field(DTYP, "asynFloat64")
-    field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_DELAY_TIME")
-    field(EGU,  "s")
-    field(PREC, "7")
-    field(SCAN, "I/O Intr")
-}
-
-#----------------------------------
 # Threshold Energy 
 #----------------------------------
 record (ao, "$(P)$(R)ThresholdEnergy")
@@ -291,33 +267,13 @@ record (longin, "$(P)$(R)NumGates_RBV")
 }
 
 #----------------------------------
-# Number of Frames
-#----------------------------------
-record (longout, "$(P)$(R)NumFrames")
-{
-    field (DESC, "Number of frames")
-    field (DTYP, "asynInt32")
-    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_NUM_FRAMES")
-    field (VAL,  "1")
-    field (PINI, "YES")
-}
-
-record (longin, "$(P)$(R)NumFrames_RBV")
-{
-    field (DESC, "Number of frames")
-    field (DTYP, "asynInt32")
-    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_NUM_FRAMES")
-    field (SCAN, "I/O Intr")
-}
-
-#----------------------------------
 # Trigger Mode
 #----------------------------------
 record (mbbo, "$(P)$(R)TriggerMode")
 {
     field (DESC, "Detector Trigger mode")
     field (DTYP, "asynInt32")
-    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_TRIGGER")
+    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))TRIGGER_MODE")
     field (ZRST, "None")
     field (ZRVL, "0")
     field (ONST, "Single")
@@ -332,7 +288,7 @@ record (mbbi, "$(P)$(R)TriggerMode_RBV")
 {
     field (DESC, "Detector Trigger mode")
     field (DTYP, "asynInt32")
-    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_TRIGGER")
+    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))TRIGGER_MODE")
     field (ZRST, "None")
     field (ZRVL, "0")
     field (ONST, "Single")
@@ -366,17 +322,60 @@ record(stringin, "$(P)$(R)FirmwareVersion_RBV")
    field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_FIRMWARE_VERSION")
 }
 
-#----------------------------------
-# Serial Number
-#----------------------------------
-record(ai, "$(P)$(R)SerialNumber_RBV")
+record(ai, "$(P)$(R)FirmwareMajor_RBV")
 {
    field(PINI, "YES")
+   field(SCAN, "I/O Intr")
    field(DTYP, "asynInt32")
-   field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_SERIAL_NUMBER")
+   field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_FIRMWARE_MAJOR")
 }
 
+#----------------------------------
+# Reset
+#----------------------------------
+record(ao, "$(P)$(R)Reset")
+{
+   field(DTYP, "asynInt32")
+   field(OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_RESET")
+}
+
+#----------------------------------
+# Unsupported
+#----------------------------------
+
+# We are dealing with counts so gain does not make sense
 record (ao, "$(P)$(R)Gain")
+{
+    field(DISA, "1")
+}
+
+record (ai, "$(P)$(R)Gain_RBV")
+{
+    field(DISA, "1")
+}
+
+# No shutter on the detector
+record (mbbo, "$(P)$(R)ShutterMode")
+{
+    field(DISA, "1")
+}
+
+record (mbbi, "$(P)$(R)ShutterMode_RBV")
+{
+    field(DISA, "1")
+}
+
+record (bo, "$(P)$(R)ShutterControl")
+{
+    field(DISA, "1")
+}
+
+record (bi, "$(P)$(R)ShutterControl_RBV")
+{
+    field(DISA, "1")
+}
+
+record (bi, "$(P)$(R)ShutterStatus_RBV")
 {
     field(DISA, "1")
 }
@@ -386,17 +385,91 @@ record (ao, "$(P)$(R)ShutterCloseDelay")
     field(DISA, "1")
 }
 
+record (ai, "$(P)$(R)ShutterCloseDelay_RBV")
+{
+    field(DISA, "1")
+}
+
 record (ao, "$(P)$(R)ShutterOpenDelay")
 {
     field(DISA, "1")
 }
 
+record (ai, "$(P)$(R)ShutterOpenDelay_RBV")
+{
+    field(DISA, "1")
+}
+
+# No temperature sensor on the detector
 record (ao, "$(P)$(R)Temperature")
 {
     field(DISA, "1")
 }
 
-record (ao, "$(P)$(R)AcquirePeriod")
+record (ai, "$(P)$(R)Temperature_RBV")
 {
+    field(DISA, "1")
+}
+
+record (ai, "$(P)$(R)Temperature_Actual")
+{
+    field(DISA, "1")
+}
+
+# Color setting not applicable
+record (mbbo, "$(P)$(R)ColorMode") {
+    field(DISA, "1")
+}
+
+record (mbbo, "$(P)$(R)BayerPattern") {
+    field(DISA, "1")
+}
+
+# From documentation the detector does not support this
+record (longout, "$(P)$(R)NumExposures") {
+    field(DISA, "1")
+}
+
+# Set from nbits
+# Data type of the array is for now always NDUInt32, should be infered from 
+# nbits TODO
+record (mbbo, "$(P)$(R)DataType") {
+    field(DISA, "1")
+}
+
+# Detector only supports readout of the whole array
+record (longout, "$(P)$(R)BinX") {
+    field(DISA, "1")
+}
+
+record (longout, "$(P)$(R)BinY") {
+    field(DISA, "1")
+}
+
+record (longout, "$(P)$(R)MinX") {
+    field(DISA, "1")
+}
+
+record (longout, "$(P)$(R)MinY") {
+    field(DISA, "1")
+}
+
+record (longout, "$(P)$(R)SizeX") {
+    field(DISA, "1")
+}
+
+record (longout, "$(P)$(R)SizeY") {
+    field(DISA, "1")
+}
+
+record (bo, "$(P)$(R)ReverseX") {
+    field(DISA, "1")
+}
+
+record (bo, "$(P)$(R)ReverseY") {
+    field(DISA, "1")
+}
+
+record (mbbo, "$(P)$(R)FrameType") {
     field(DISA, "1")
 }

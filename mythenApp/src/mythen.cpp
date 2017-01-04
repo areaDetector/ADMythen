@@ -16,9 +16,6 @@
  *            2015-07-15  M. Moore ANL - APS/XSD/DET: Modified acquire sequence to handle trigger time outs
  *            2015-08-05  M. Moore ANL - APS/XSD/DET: Changed how readout timeouts are handled to be timeout+acquiretime
  *                                                    Handles ImageMode correctly, so that if you have single acquire it only acquires one image
- *
- * TODO Gates are not used even though they can be set from the driver, find the
- *      manual and figure out what gates do.
  */
 
 #include <stddef.h>
@@ -58,7 +55,6 @@
 #define FIRMWARE_VERSION_LEN 7
 
 #define SDSettingString          "SD_SETTING"
-#define SDDelayTimeString        "SD_DELAY_TIME"
 #define SDThresholdString        "SD_THRESHOLD"
 #define SDEnergyString           "SD_ENERGY"
 #define SDUseFlatFieldString     "SD_USE_FLATFIELD"
@@ -68,12 +64,10 @@
 #define SDBitDepthString         "SD_BIT_DEPTH"
 #define SDUseGatesString         "SD_USE_GATES"
 #define SDNumGatesString         "SD_NUM_GATES"
-#define SDNumFramesString        "SD_NUM_FRAMES"
-#define SDTriggerString          "SD_TRIGGER"
 #define SDResetString            "SD_RESET"
-#define SDNModulesString         "SD_NMODULES"
 #define SDFirmwareVersionString  "SD_FIRMWARE_VERSION"
-#define SDSerialNumberString     "SD_SERIAL_NUMBER"
+#define SDFirmwareMajorString    "SD_FIRMWARE_MAJOR"
+#define SDNModulesString         "SD_NMODULES"
 
 namespace mythen {
 
@@ -184,7 +178,6 @@ class mythen : public ADDriver {
     protected:
         int SDSetting;
 #define FIRST_SD_PARAM SDSetting
-        int SDDelayTime;
         int SDThreshold;
         int SDEnergy;
         int SDUseFlatField;
@@ -193,12 +186,11 @@ class mythen : public ADDriver {
         int SDBitDepth;
         int SDUseGates;
         int SDNumGates;
-        int SDNumFrames;
         int SDTrigger;
         int SDReset;
         int SDTau;
         int SDFirmwareVersion;
-        int SDSerialNumber;
+        int SDFirmwareMajor;
         int SDNModules;
 #define LAST_SD_PARAM SDNModules
 
@@ -208,12 +200,11 @@ class mythen : public ADDriver {
         asynStatus setFCorrection(epicsInt32 value);
         asynStatus setRCorrection(epicsInt32 value);
         asynStatus setExposureTime(epicsFloat64 value);
-        asynStatus setDelayAfterTrigger(epicsFloat64 value);
+        asynStatus setAcquirePeriod(epicsFloat64 value);
         asynStatus setBitDepth(epicsInt32 value);
         asynStatus setBadChanIntrpl(epicsInt32 value);
         asynStatus setUseGates(epicsInt32 value);
         asynStatus setNumGates(epicsInt32 value);
-        asynStatus setNumFrames(epicsInt32 value);
         asynStatus setKthresh(epicsFloat64 value);
         asynStatus setEnergy(epicsFloat64 value);
         asynStatus setTau(epicsFloat64 value);
@@ -221,7 +212,6 @@ class mythen : public ADDriver {
         asynStatus loadSettings(epicsInt32 value);
         asynStatus setReset();
         asynStatus getSettings();
-        asynStatus getSerialNumber();
         epicsInt32 getStatus();
         asynStatus getFirmware();
         asynStatus readoutFrames(size_t nFrames);
@@ -255,7 +245,6 @@ class mythen : public ADDriver {
         /* This is a status pair so the driver writes/reads can be correctly
          * disabled without locking while acquiring. */
         StatusPair acquiring_;
-        size_t frames_;
         epicsInt32 serial_;
 };
 
@@ -310,7 +299,6 @@ T mythen::writeReadNumeric(const char * outString) const
     int eomReason;
     char inString[sizeof(T)];
 
-    printf("DEBUG WRN: sending command %s\n", outString);
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString,
             strlen(outString), inString, sizeof(inString), M1K_TIMEOUT,
             &nwrite, &nread, &eomReason);
@@ -329,7 +317,6 @@ std::string mythen::writeReadOctet(const char * outString) const
     int eomReason;
     char inString[N];
 
-    printf("DEBUG WRO: sending command %s\n", outString);
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
             outString, strlen(outString), inString, 
             N, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
@@ -502,7 +489,7 @@ asynStatus mythen::setEnergy(epicsFloat64 value)
 /**
  * Sets the exposure time of one frame.
  *
- * \param[in] value Value for exposure time in units of 100 ns 
+ * \param[in] value Value for exposure time in seconds
  *
  * \return asynSuccess on the successful set, asynError otherwise
  */
@@ -522,31 +509,50 @@ asynStatus mythen::setExposureTime(epicsFloat64 value)
     }
 
     long long hns = (long long)(value * (1E+7));
-    return sendCommand("-time %lld", hns);
+    epicsFloat64 period;
+    int status = asynSuccess;
+
+    getDoubleParam(ADAcquirePeriod, &period);
+    if (period < value) {
+        status |= setAcquirePeriod(value);
+    }
+
+    status |= sendCommand("-time %lld", hns);
+
+    return (asynStatus)status;
 }
 
 /**
- * Sets the delay time after trigger.
+ * Sets the acquisition period of the detector.
+ * The acquisition period is set by changing the time between acquisition 
+ * frames.
  *
- * \param[in] value Value for delay after trigger time in units of 100 ns 
+ * \param[in] value Acquisition period in second, must be longer than 
+ *            exposure time.
  *
  * \return asynSuccess on the successful set, asynError otherwise
  */
-asynStatus mythen::setDelayAfterTrigger(epicsFloat64 value)
+asynStatus mythen::setAcquirePeriod(epicsFloat64 value)
 {
-    if (value < 0) {
+    epicsFloat64 exposureTime;
+
+    getDoubleParam(ADAcquireTime, &exposureTime);
+    epicsFloat64 delayTime = value - exposureTime;
+    if (delayTime < 0) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "Trigger delay time cannot be negative (reqested %f).\n", value);
-        return asynError;
+                "Acquisition period (%f) shorter than exposure time (%f)"
+                "setting the acquisition period to %f.\n", value,
+                exposureTime, exposureTime);
+        delayTime = 0;
     }
-    if (value > LLONG_MAX * 1E-7) {
+    if (delayTime > LLONG_MAX * 1E-7) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "Requested trigger delay time (%f) too long. "
+                "Acquisition period (%f) too long. "
                 "Maximum value is %f.\n", value, LLONG_MAX * 1E-7);
         return asynOverflow;
     }
 
-    long long hns = (long long)(value * (1E+7));
+    long long hns = (long long)(delayTime * (1E+7));
     return sendCommand("-delafter %d", hns);
 }
 
@@ -614,36 +620,6 @@ asynStatus mythen::setUseGates(epicsInt32 value)
 asynStatus mythen::setNumGates(epicsInt32 value)
 {
     return sendCommand("-gates %d", value);
-}
-
-/**
- * Number of frames. 
- *
- * \param[in] value Number of frames.
- *
- * \return asynSuccess on the successful set, asynError otherwise
- */
-asynStatus mythen::setNumFrames(epicsInt32 value)
-{
-    return sendCommand("-frames %d", value);
-}
-
-/**
- * Gets serial number from the device and saves it to internal state.
- * 
- * \return asynSuccess on successful get, asynError otherwise.
- */
-asynStatus mythen::getSerialNumber()
-{
-    try {
-        serial_ = writeReadNumeric<epicsInt32>("-get systemnum");
-        return asynSuccess;
-    } catch (const MythenConnectionError& e) {
-        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "%s: Connection error: Unable to retrieve serial number.\n",
-                driverName);
-        return asynError;
-    }
 }
 
 /**
@@ -840,13 +816,11 @@ asynStatus mythen::setReset()
     asynStatus status = asynSuccess;
     epicsInt32 i = 0;
 
-    setIntegerParam(SDReset, 1);
     callParamCallbacks();
     for (i=0; i<nmodules_; ++i) {
         status = sendCommand("-module %d", i);
         status = sendCommand("-reset");
     }
-    setIntegerParam(SDReset,0);
     callParamCallbacks();
     return status;
 }
@@ -872,7 +846,6 @@ asynStatus mythen::getSettings()
         int aux = 0;
         epicsFloat32 faux = 0.;
         long long laux = 0;
-        epicsFloat64 DetTime = 0.;
 
         aux = writeReadNumeric<epicsInt32>("-get flatfieldcorrection");
         if (aux!=0 && aux!=1) {
@@ -904,7 +877,7 @@ asynStatus mythen::getSettings()
         setIntegerParam(SDUseCountRate, aux);
 
         aux = writeReadNumeric<epicsInt32>("-get nbits");
-        if (aux < 0) {
+        if (aux <= 0) {
             asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                     "%s%s: Invalid value %d received for nbits.\n",
                     driverName, functionName, aux);
@@ -914,17 +887,17 @@ asynStatus mythen::getSettings()
         chanperline_ = 32 / nbits_;
         setIntegerParam(SDBitDepth, aux);
 
+        epicsFloat64 acqTime;
         aux = writeReadNumeric<epicsInt32>("-get time");
         if (aux >= 0) {
-            DetTime = (aux * (1E-7));
+            acqTime = (aux * (1E-7));
         } else {
             asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                     "%s%s: Invalid value %d received for exposure time.\n",
                     driverName, functionName, aux);
             return asynError;
         }
-        setDoubleParam(ADAcquireTime, DetTime);
-
+        setDoubleParam(ADAcquireTime, acqTime);
 
         faux = writeReadNumeric<epicsFloat32>("-get tau");
         if (faux == -1 || faux > 0) {
@@ -936,7 +909,6 @@ asynStatus mythen::getSettings()
             return asynError;
         }
 
-        // TODO for this command the device returns nmodules_ floats
         faux = writeReadNumeric<epicsFloat32>("-get kthresh");
         if (faux < 0) {
             asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
@@ -966,18 +938,6 @@ asynStatus mythen::getSettings()
             }
             setIntegerParam(SDUseGates, aux);
 
-
-            aux = writeReadNumeric<epicsInt32>("-get frames");
-            if (aux >= 0) {
-                setIntegerParam(SDNumFrames, aux);
-                frames_ = aux;
-            } else {
-                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                        "%s%s: Invalid value %d received number of frames.\n",
-                        driverName, functionName, aux);
-                return asynError;
-            }
-            // TODO for this command the device returns nmodules_ floats
             faux = writeReadNumeric<epicsFloat32>("-get energy");
             if (faux < 0) {
                 asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
@@ -987,9 +947,10 @@ asynStatus mythen::getSettings()
             }
             else setDoubleParam(SDEnergy,faux);
 
+            epicsFloat64 deadTime;
             laux = writeReadNumeric<long long>("-get delafter");
             if (laux >= 0) {
-                DetTime = (laux * (1E-7));
+                deadTime = (laux * (1E-7));
             }
             else {
                 asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
@@ -998,7 +959,7 @@ asynStatus mythen::getSettings()
                         driverName, functionName, laux);
                 return asynError;
             }
-            setDoubleParam(SDDelayTime, DetTime);
+            setDoubleParam(ADAcquirePeriod, deadTime+acqTime);
 
 
             // Get trigger modes
@@ -1009,7 +970,7 @@ asynStatus mythen::getSettings()
                         driverName, functionName, aux);
                 return asynError;
             } else if (aux == 1) {
-                setIntegerParam(SDTrigger, TriggerMode_Continuous);
+                setIntegerParam(ADTriggerMode, TriggerMode_Continuous);
             } else {
                 aux = writeReadNumeric<epicsInt32>("-get trig");
                 if (aux < 0) {
@@ -1018,9 +979,9 @@ asynStatus mythen::getSettings()
                             driverName, functionName, aux);
                     return asynError;
                 } else if (aux == 1) {
-                    setIntegerParam(SDTrigger, TriggerMode_Single);
+                    setIntegerParam(ADTriggerMode, TriggerMode_Single);
                 } else {
-                    setIntegerParam(SDTrigger, TriggerMode_None);
+                    setIntegerParam(ADTriggerMode, TriggerMode_None);
                 }
             }
         }
@@ -1062,17 +1023,16 @@ asynStatus mythen::readoutFrames(size_t nFrames)
         asynStatus status;
         size_t nread;
         size_t nwrite;
-        epicsFloat64 acquireTime;
+        epicsFloat64 acquirePeriod;
         int eomReason;
         bool dataOK;
 
-        getDoubleParam(ADAcquireTime, &acquireTime);
+        getDoubleParam(ADAcquirePeriod, &acquirePeriod);
 
-        printf("DEBUG STATUS: sending command %s\n", read_cmd.c_str());
         status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
                 read_cmd.c_str(), sizeof read_cmd.c_str(),
                 (char *)detArray, nread_expect,
-                M1K_TIMEOUT+acquireTime, &nwrite,
+                M1K_TIMEOUT+acquirePeriod, &nwrite,
                 &nread, &eomReason);
 
         if(nread == nread_expect) {
@@ -1103,11 +1063,9 @@ void mythen::acquisitionTask()
 {
     static const char *functionName = "acquisitionTask";
     // Number of acquired frames since acquisition start
-    epicsInt32 n_acquired = 0; 
 
     while (true) {
         if (not acquiring_.request) {
-            n_acquired = 0;
             getStatus();
             acquiring_.current = false;
             setIntegerParam(ADAcquire, 0);
@@ -1117,52 +1075,63 @@ void mythen::acquisitionTask()
             startEvent_.wait();
         } else {
             int detectorStatus;
-            // Start will read frames_, this is a way to avoid the lock.
-            size_t frames = frames_;
-            int status = sendCommand("-start");
+
+            epicsInt32 imageMode;
+            int frames;
+
+            setIntegerParam(ADNumImagesCounter, 0);
+            getIntegerParam(ADImageMode, &imageMode);
+
+            /* Configure the device with the number of frames to take if in
+             * Multiple mode */
+            if (imageMode == ADImageMultiple) {
+                getIntegerParam(ADNumImages, &frames);
+            } else {
+                frames = 1;
+            }
+
+            asynStatus status = sendCommand("-frames %d", frames);
+            if(status != asynSuccess) {
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s:%s: error setting the number of frames to =%d\n",
+                        driverName, functionName, frames);
+                setAcquire(0);
+                continue;
+            }
 
             acquiring_.current = true;
             setIntegerParam(ADAcquire, 1);
             callParamCallbacks();
 
-            if(status != asynSuccess) {
-                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                        "%s:%s: error sending start command status=%d\n",
-                        driverName, functionName, status);
-                setAcquire(0);
-                continue;
-            }
+            do {
+                status = sendCommand("-start");
 
-            status = readoutFrames(frames);
-            if (status != asynSuccess) {
-                setAcquire(0);
-                continue;
-            }
-            n_acquired++;
-
-            detectorStatus = getStatus(); 
-            if (detectorStatus == ADStatusError) {
-                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                        "%s:%s: The detector is in error state, stopping the "
-                        "acquisition.\n",
-                        driverName, functionName);
-                setAcquire(0);
-                continue;
-            } else {
-                epicsInt32 imageMode;
-
-                getIntegerParam(ADImageMode, &imageMode);
-                if (imageMode == ADImageSingle) {
-                    setAcquire(0);
-                } else if (imageMode == ADImageMultiple) {
-                    epicsInt32 requested;
-
-                    getIntegerParam(ADNumImages, &requested);
-                    if (n_acquired >= requested) {
-                        setAcquire(0);
-                    }
+                if(status != asynSuccess) {
+                    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                            "%s:%s: error sending start command status=%d\n",
+                            driverName, functionName, status);
+                    break;
                 }
-            }
+
+                status = readoutFrames(frames);
+                if (status != asynSuccess) {
+                    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                            "%s:%s: readout failed with status=%d\n",
+                            driverName, functionName, status);
+                    break;
+                }
+
+                detectorStatus = getStatus(); 
+                if (detectorStatus == ADStatusError) {
+                    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                            "%s:%s: The detector is in error state, stopping the "
+                            "acquisition.\n",
+                            driverName, functionName);
+                    break;
+                }
+            } while (imageMode == ADImageContinuous and acquiring_.request);
+
+            setAcquire(0);
         }
     }
 }
@@ -1177,17 +1146,18 @@ bool mythen::dataCallback(epicsUInt32 * const pData)
     int numImagesCounter;
     epicsTimeStamp timeStamp;
     epicsInt32 colorMode = NDColorModeMono;
+    epicsInt32 imageMode;
 
     if (pData == NULL or pData[0] < 0) return false;
 
-    dims[0] = MAX_DIMS;
+    dims[0] = MAX_DIMS*nmodules_;
     dims[1] = 1;
 
     // Get the current time
     epicsTimeGetCurrent(&timeStamp);
 
     // Allocate a new image buffer
-    pImage = this->pNDArrayPool->alloc(ndims, dims, NDInt32, MAX_DIMS*nmodules_*sizeof(epicsInt32), NULL);
+    pImage = this->pNDArrayPool->alloc(ndims, dims, NDInt32, MAX_DIMS*nmodules_*sizeof(epicsUInt32), NULL);
     decodeRawReadout(pData, (epicsUInt32 *)pImage->pData);
 
     pImage->dataType = NDUInt32;
@@ -1208,6 +1178,17 @@ bool mythen::dataCallback(epicsUInt32 * const pData)
     numImagesCounter++;
     setIntegerParam(NDArrayCounter, imageCounter);
     setIntegerParam(ADNumImagesCounter, numImagesCounter);
+
+    getIntegerParam(ADImageMode, &imageMode);
+    // Calculate time in multiple mode
+    if (imageMode == ADImageMultiple) {
+        epicsFloat64 acquirePeriod;
+        epicsInt32 frames;
+
+        getDoubleParam(ADAcquirePeriod, &acquirePeriod);
+        getIntegerParam(ADNumImages, &frames);
+        setDoubleParam(ADTimeRemaining, (frames-numImagesCounter)*acquirePeriod);
+    }
 
     // Set the uniqueId and time stamp
     pImage->uniqueId = imageCounter;
@@ -1347,6 +1328,7 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
     status |= setIntegerParam(function, value);
 
     if (function == ADAcquire) {
+        status = ADDriver::writeInt32(pasynUser, value);
         return setAcquire(value); // settings should not be updated
     } else if (function == SDSetting) {
         status |= loadSettings(value);
@@ -1360,14 +1342,13 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
         status |= setBitDepth(value);
     } else if (function == SDNumGates) {
         status |= setNumGates(value);
-    } else if (function == SDNumFrames) {
-        status |= setNumFrames(value);
     } else if (function == SDUseGates) {
         status |= setUseGates(value);
-    } else if (function == SDTrigger) {
-        status |= setTrigger(value);
     } else if (function == SDReset) {
         status |= setReset();
+    } else if (function == ADTriggerMode) {
+        status |= ADDriver::writeInt32(pasynUser, value);
+        status |= setTrigger(value);
     } else if (function < FIRST_SD_PARAM) {
         /* If this is not a parameter we have handled call the base class */
         status |= ADDriver::writeInt32(pasynUser, value);
@@ -1425,14 +1406,14 @@ asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
 
     if (function == ADAcquireTime) {
         status |= setExposureTime(value);
-    } else if (function == SDDelayTime) {
-        status |= setDelayAfterTrigger(value);
     } else if (function == SDThreshold) {
         status |= setKthresh(value);
     } else if (function == SDEnergy) {
         status |= setEnergy(value);
     } else if (function == SDTau) {
         status |= setTau(value);
+    } else if (function == ADAcquirePeriod) {
+        status |= setAcquirePeriod(value);
     } else if (function < NUM_SD_PARAMS) {
         /* If this is not a parameter we have handled call the base class */
         status = ADDriver::writeFloat64(pasynUser, value);
@@ -1520,7 +1501,6 @@ mythen::mythen(const char *portName, const char *IPPortName,
     }
 
     createParam(SDSettingString,          asynParamInt32,   &SDSetting);
-    createParam(SDDelayTimeString,        asynParamFloat64, &SDDelayTime);
     createParam(SDThresholdString,        asynParamFloat64, &SDThreshold);
     createParam(SDEnergyString,           asynParamFloat64, &SDEnergy);
     createParam(SDUseFlatFieldString,     asynParamInt32,   &SDUseFlatField);
@@ -1529,35 +1509,18 @@ mythen::mythen(const char *portName, const char *IPPortName,
     createParam(SDBitDepthString,         asynParamInt32,   &SDBitDepth);
     createParam(SDUseGatesString,         asynParamInt32,   &SDUseGates);
     createParam(SDNumGatesString,         asynParamInt32,   &SDNumGates);
-    createParam(SDNumFramesString,        asynParamInt32,   &SDNumFrames);
-    createParam(SDTriggerString,          asynParamInt32,   &SDTrigger);
     createParam(SDResetString,            asynParamInt32,   &SDReset);
     createParam(SDTauString,              asynParamFloat64, &SDTau);
-    createParam(SDNModulesString,         asynParamInt32,   &SDNModules);
     createParam(SDFirmwareVersionString,  asynParamOctet,   &SDFirmwareVersion);
-    createParam(SDSerialNumberString,     asynParamInt32,   &SDSerialNumber);
+    createParam(SDFirmwareMajorString,    asynParamInt32,   &SDFirmwareMajor);
+    createParam(SDNModulesString,         asynParamInt32,   &SDNModules);
 
     status =  setStringParam (ADManufacturer, "Dectris");
     status |= setStringParam (ADModel,        "Mythen");
 
     status |= getFirmware();
     status |= setStringParam (SDFirmwareVersion, fwVersion_.c_str());
-
-    status |= getSerialNumber();
-    status |= setIntegerParam(SDSerialNumber, serial_);
-
-    status |= setIntegerParam(ADMaxSizeX, MAX_DIMS);
-    status |= setIntegerParam(ADMaxSizeY, 1);
-
-    status |= setIntegerParam(ADMinX,  1);
-    status |= setIntegerParam(ADMinY,  1);
-    status |= setIntegerParam(ADSizeX, MAX_DIMS);
-    status |= setIntegerParam(ADSizeY, 1);
-
-    status |= setIntegerParam(NDArraySize, 0);
-    status |= setIntegerParam(NDDataType,  NDInt32);
-
-    status |= setIntegerParam(ADImageMode, ADImageSingle);
+    status |= setIntegerParam (SDFirmwareMajor, fwVersion_.major());
 
     getStatus();
 
@@ -1577,10 +1540,28 @@ mythen::mythen(const char *portName, const char *IPPortName,
         status |= asynError;
     }
 
+    status |= setIntegerParam(ADMaxSizeX, MAX_DIMS*nmodules_);
+    status |= setIntegerParam(ADMaxSizeY, 1);
+    status |= setIntegerParam(ADSizeX, MAX_DIMS*nmodules_);
+    status |= setIntegerParam(ADSizeY, 1);
+    status |= setIntegerParam(ADMinX,  1);
+    status |= setIntegerParam(ADMinY,  1);
+
+    status |= setIntegerParam(NDArraySize, MAX_DIMS*nmodules_*sizeof(epicsUInt32));
+    status |= setIntegerParam(NDArraySizeX, MAX_DIMS*nmodules_);
+    status |= setIntegerParam(NDArraySizeY, 1);
+
+    status |= setIntegerParam(ADImageMode, ADImageSingle);
+
+
     /* Read the current settings from the device.  This will set parameters in the parameter library. */
     status |= getSettings();
 
     callParamCallbacks();
+
+    epicsFloat64 exposureTime;
+    status |= getDoubleParam(ADAcquireTime, &exposureTime);
+    status |= setDoubleParam(ADAcquirePeriod, exposureTime);
 
     if (status != asynSuccess) {
         printf("%s: unable to read camera parameters\n", functionName);
