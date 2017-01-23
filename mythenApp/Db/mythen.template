@@ -8,6 +8,7 @@
 # %macro, TIMEOUT, Timeout, default 1
 # %macro, ADDR, Asyn Port Address, default 0
 #
+# %gui, $(PORT), edmtab, mythen.edl, P=$(P),R=$(R)
 #================================================
 
 include "ADBase.template"
