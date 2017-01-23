@@ -2,6 +2,6 @@
 <components arch="linux-x86_64">
 	<asyn.AsynIP name="MTYH.PORT" port="172.23.88.214:1031"/>
 	<EPICS_BASE.EpicsEnvSet key="EPICS_CA_MAX_ARRAY_BYTES" value="64008"/>
-	<ADMythen.mythenDetector IPPORT="MTYH.PORT" P="mythen" PORT="MYTH" R=":"/>
-	<ADCore.NDStdArrays ADDR="0" FTVL="DOUBLE" NDARRAY_PORT="MYTH" NELEMENTS="1280" P="mythen" PORT="MYTH.ARR" R=":ARR:" TIMEOUT="1" TYPE="Float64"/>
+	<ADMythen.mythenDetector IPPORT="MTYH.PORT" P="mythen" PORT="MYTH.CAM" R=":"/>
+	<ADCore.NDStdArrays ADDR="0" FTVL="DOUBLE" NDARRAY_PORT="MYTH.CAM" NELEMENTS="1280" P="mythen" PORT="MYTH.ARR" R=":ARR:" TIMEOUT="1" TYPE="Float64"/>
 </components>
