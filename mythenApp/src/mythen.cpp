@@ -334,7 +334,9 @@ asynStatus mythen::setAcquire(epicsInt32 value)
     static const char *functionName = "setAcquire";
 
     if (value == 0) {
-        status = sendCommand("-stop");
+        if (acquiring_.request) {
+            status = sendCommand("-stop");
+        }
         getStatus();
         acquiring_.request = false;
     } else if (not acquiring_.request) {
