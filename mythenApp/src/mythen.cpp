@@ -80,7 +80,7 @@ public:
     { };
 };
 
-/** 
+/**
  * Casts a byte array to the specific type and also swaps bytes if the host uses
  * big endian format.
  *
@@ -90,7 +90,7 @@ public:
 template <class T>
 T byteCast(char* str)
 {
-    T value; 
+    T value;
 
     if (EPICS_BYTE_ORDER == EPICS_ENDIAN_BIG) {
         char* pVal = reinterpret_cast<char*>(&value);
@@ -113,7 +113,7 @@ public:
      * Constructor.
      *
      * The version numbers are parsed from 7 byte long string
-     * of type "M3.0.0". 
+     * of type "M3.0.0".
      *
      * \param version Version string.
      */
@@ -194,7 +194,7 @@ class mythen : public ADDriver {
         int SDNModules;
 #define LAST_SD_PARAM SDNModules
 
-    private:                                       
+    private:
         /* These are the methods we implement from Mythen */
         asynStatus setAcquire(epicsInt32 value);
         asynStatus setFCorrection(epicsInt32 value);
@@ -318,7 +318,7 @@ std::string mythen::writeReadOctet(const char * outString) const
     char inString[N];
 
     asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
-            outString, strlen(outString), inString, 
+            outString, strlen(outString), inString,
             N, M1K_TIMEOUT, &nwrite, &nread, &eomReason);
 
     if (status != asynSuccess) {
@@ -374,7 +374,7 @@ asynStatus mythen::setTrigger(epicsInt32 value)
                 "%s: Unable to reset trigger status\n.", driverName);
         return status;
     }
-    
+
     switch (value) {
         case TriggerMode_None:
             // Clearing trigen clears conttrig also
@@ -393,7 +393,7 @@ asynStatus mythen::setTrigger(epicsInt32 value)
 
 /**
  * Sets the dead time constant for the rate correction
- * 
+ *
  * \param[in] value Value for the tau
  *
  * \return asynSuccess on the successful set, asynError otherwise
@@ -526,10 +526,10 @@ asynStatus mythen::setExposureTime(epicsFloat64 value)
 
 /**
  * Sets the acquisition period of the detector.
- * The acquisition period is set by changing the time between acquisition 
+ * The acquisition period is set by changing the time between acquisition
  * frames.
  *
- * \param[in] value Acquisition period in second, must be longer than 
+ * \param[in] value Acquisition period in second, must be longer than
  *            exposure time.
  *
  * \return asynSuccess on the successful set, asynError otherwise
@@ -561,7 +561,7 @@ asynStatus mythen::setAcquirePeriod(epicsFloat64 value)
 /**
  * Enables or disables the flatfield correction.
  *
- * After initialisation the flatfield correction is enabled. 
+ * After initialisation the flatfield correction is enabled.
  *
  * \param[in] value 0 to disable or 1 to enable flatfield correction.
  *
@@ -573,7 +573,7 @@ asynStatus mythen::setFCorrection(epicsInt32 value)
 }
 
 /**
- * Enables or disables the bad channel interpolation 
+ * Enables or disables the bad channel interpolation
  *
  * \param[in] value 0 to disable or 1 to enable interpolation.
  *
@@ -587,7 +587,7 @@ asynStatus mythen::setBadChanIntrpl(epicsInt32 value)
 /**
  * Enables or disables the rate correction.
  *
- * After initialisation the rate correction is disabled. 
+ * After initialisation the rate correction is disabled.
  *
  * \param[in] value 0 to disable or 1 to enable rate correction.
  *
@@ -598,10 +598,10 @@ asynStatus mythen::setRCorrection(epicsInt32 value)
     return sendCommand("-ratecorrection %d", value);
 }
 
-/** 
+/**
  * Enables or disables the gates.
- * 
- * After initialisation the gates are disabled. 
+ *
+ * After initialisation the gates are disabled.
  *
  * \param[in] value 0 to disable or 1 to enable gates.
  *
@@ -613,7 +613,7 @@ asynStatus mythen::setUseGates(epicsInt32 value)
 }
 
 /**
- * Number of gates. 
+ * Number of gates.
  *
  * \param[in] value Number of gates.
  *
@@ -665,7 +665,7 @@ epicsInt32 mythen::getStatus()
             detStatus = ADStatusAcquire;
 
             triggerWaitCnt=0;
-            // Waits for Trigger for increasing amount of time for a total of 
+            // Waits for Trigger for increasing amount of time for a total of
             // almost 1 minute // TODO I have no idea why this is done this way
             while (t_status and triggerWaitCnt < MAX_TRIGGER_TIMEOUT_COUNT) {
                 triggerWait = 0.0001*pow(10.0,((double)(triggerWaitCnt/10)+1));
@@ -689,10 +689,10 @@ epicsInt32 mythen::getStatus()
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s: Connection error: Unable to retrieve status.\n",
                 driverName);
-        detStatus = ADStatusError; 
+        detStatus = ADStatusError;
     }
 
-    setIntegerParam(ADStatus, detStatus); 
+    setIntegerParam(ADStatus, detStatus);
     callParamCallbacks();
 
     return detStatus;
@@ -808,7 +808,7 @@ asynStatus mythen::loadSettings(epicsInt32 value)
 
 /**
  * Sets the detector back to default settings.
- * 
+ *
  * This command takes about two seconds per module.
  *
  * \return asynSuccess on successful reset, asynError otherwise
@@ -1017,7 +1017,7 @@ asynStatus mythen::readoutFrames(size_t nFrames)
     const char* functionName = "readoutFrames";
 
     std::string read_cmd = "-readoutraw";
-    unsigned int nread_expect = 
+    unsigned int nread_expect =
         sizeof(epicsUInt32) * nmodules_ * MAX_DIMS / chanperline_;
     epicsUInt32 * detArray = (epicsUInt32 *)malloc(nread_expect);
 
@@ -1123,7 +1123,7 @@ void mythen::acquisitionTask()
                     break;
                 }
 
-                detectorStatus = getStatus(); 
+                detectorStatus = getStatus();
                 if (detectorStatus == ADStatusError) {
                     asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                             "%s:%s: The detector is in error state, stopping the "
@@ -1243,7 +1243,7 @@ void mythen::decodeRawReadout(epicsUInt32 * const data, epicsUInt32 * const resu
             mask=0xf;
             break;
         // Default to 24 bit
-        case 24: 
+        case 24:
         default:
             mask = 0xffffff;
     }
@@ -1301,7 +1301,7 @@ asynStatus mythen::writeOctet(asynUser *pasynUser, const char *value,
     return (asynStatus)status;
 }
 
-/** 
+/**
  * Called when asyn clients call pasynInt32->write().
  * This function performs actions for some parameters, including ADAcquire, ADBinX, etc.
  * For all parameters it sets the value in the parameter library and calls any registered callbacks..
@@ -1377,7 +1377,7 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
     return asynSuccess;
 }
 
-/** 
+/**
  * Called when asyn clients call pasynFloat64->write().
  * For all  parameters it  sets the value in the parameter library and calls any registered callbacks.
  *
@@ -1442,7 +1442,7 @@ asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
 }
 
 
-/** 
+/**
  * Report status of the driver.
  * Prints details about the driver if details>0.
  * It then calls the ADDriver::report() method.
@@ -1466,7 +1466,7 @@ void mythen::report(FILE *fp, int details)
 }
 
 
-/** 
+/**
  * Constructor for mythen driver; most parameters are simply passed to ADDriver::ADDriver.
  * After calling the base class constructor this method creates a thread to collect the detector data,
  * and sets reasonable default values for the parameters defined in this class, asynNDArrayDriver, and ADDriver.
@@ -1497,7 +1497,7 @@ mythen::mythen(const char *portName, const char *IPPortName,
     status = pasynOctetSyncIO->connect(IPPortName, 0, &pasynUserMeter_, NULL);
     if (status) {
         printf("%s:%s: error calling pasynOctetSyncIO->connect, status=%d, error=%s\n",
-                driverName, functionName, (asynStatus)status, 
+                driverName, functionName, (asynStatus)status,
                 pasynUserMeter_->errorMessage);
         return;
     }

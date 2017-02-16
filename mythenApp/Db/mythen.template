@@ -51,7 +51,7 @@ record (mbbi, "$(P)$(R)Setting_RBV")
 }
 
 #----------------------------------
-# Threshold Energy 
+# Threshold Energy
 #----------------------------------
 record (ao, "$(P)$(R)ThresholdEnergy")
 {
@@ -75,7 +75,7 @@ record (ai, "$(P)$(R)ThresholdEnergy_RBV")
 }
 
 #----------------------------------
-# Beam Energy 
+# Beam Energy
 #----------------------------------
 record (ao, "$(P)$(R)BeamEnergy")
 {
@@ -432,7 +432,7 @@ record (longout, "$(P)$(R)NumExposures") {
 }
 
 # Set from nbits
-# Data type of the array is for now always NDUInt32, should be infered from 
+# Data type of the array is for now always NDUInt32, should be infered from
 # nbits TODO
 record (mbbo, "$(P)$(R)DataType") {
     field(DISA, "1")
