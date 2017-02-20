@@ -50,9 +50,10 @@
 
 #define MAX_DIMS      1280
 #define MAX_COMMAND_LEN 128
-#define M1K_TIMEOUT 5.0
+#define M1K_TIMEOUT 2.0
 #define MAX_TRIGGER_TIMEOUT_COUNT 50
 #define FIRMWARE_VERSION_LEN 7
+#define WAIT_TIMEOUT 5
 
 #define SDSettingString          "SD_SETTING"
 #define SDThresholdString        "SD_THRESHOLD"
@@ -142,17 +143,52 @@ private:
 };
 
 /**
- * Status pair class to track the requested and current status with one object.
+ * Status pair class to track the requested and current status with one atomic
+ * object.
  */
-struct StatusPair {
-    bool request;
-    bool current;
+class StatusPair {
+private:
+    bool request_;
+    bool current_;
+    epicsMutex lock_;
+public:
     StatusPair()
-        : request(false),
-          current(false)
+        : request_(false),
+          current_(false),
+          lock_()
     { }
+
+    void set_request(bool value) {
+        lock_.lock();
+        request_ = value;
+        lock_.unlock();
+    }
+
+    bool get_request() {
+        lock_.lock();
+        bool value = request_;
+        lock_.unlock();
+        return value;
+    }
+
+    void set_current(bool value) {
+        lock_.lock();
+        current_ = value;
+        lock_.unlock();
+    }
+
+    bool get_current() {
+        lock_.lock();
+        bool value = current_;
+        lock_.unlock();
+        return value;
+    }
+
     operator bool() {
-        return request || current;
+        lock_.lock();
+        bool result = request_ || current_;
+        lock_.unlock();
+        return result;
     }
 };
 
@@ -215,11 +251,11 @@ class mythen : public ADDriver {
         epicsInt32 getStatus();
         asynStatus getFirmware();
         asynStatus readoutFrames(size_t nFrames);
-        void decodeRawReadout(epicsUInt32 * const data, epicsUInt32 * const result);
+        void decodeRawReadout(const std::vector<char>& data, epicsUInt32 * const result);
         asynStatus sendCommand(const char* format, ...);
         template <class T> T writeReadNumeric(const char* inString) const;
         template <int N> std::string writeReadOctet(const char* inString) const;
-        bool dataCallback(epicsUInt32 * const pData);
+        bool dataCallback(const std::vector<char>& pData);
 
     private:
         enum SettingPreset {
@@ -242,8 +278,6 @@ class mythen : public ADDriver {
         unsigned int chanperline_;
         epicsInt32 nmodules_;
         FirmwareVersion fwVersion_;
-        /* This is a status pair so the driver writes/reads can be correctly
-         * disabled without locking while acquiring. */
         StatusPair acquiring_;
         epicsInt32 serial_;
 };
@@ -334,13 +368,13 @@ asynStatus mythen::setAcquire(epicsInt32 value)
     static const char *functionName = "setAcquire";
 
     if (value == 0) {
-        if (acquiring_.request) {
+        if (acquiring_.get_request()) {
             status = sendCommand("-stop");
         }
         getStatus();
-        acquiring_.request = false;
-    } else if (not acquiring_.request) {
-        acquiring_.request = true;
+        acquiring_.set_request(false);
+    } else if (not acquiring_.get_request()) {
+        acquiring_.set_request(true);
         // Notify the acquisition thread that acquisition has started
         startEvent_.signal();
     } else {
@@ -349,7 +383,9 @@ asynStatus mythen::setAcquire(epicsInt32 value)
     }
 
     if (status != asynSuccess) {
-        acquiring_.request = false;
+        if (acquiring_.get_request()) {
+            setAcquire(false);
+        }
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s:%s: error setting acquistion to %d!\n",
                 driverName, functionName, value);
@@ -1019,10 +1055,9 @@ asynStatus mythen::readoutFrames(size_t nFrames)
     std::string read_cmd = "-readoutraw";
     unsigned int nread_expect =
         sizeof(epicsUInt32) * nmodules_ * MAX_DIMS / chanperline_;
-    epicsUInt32 * detArray = (epicsUInt32 *)malloc(nread_expect);
 
     for (size_t i = 0; i < nFrames; i++) {
-        asynStatus status;
+        std::vector<char> detArray(nread_expect);
         size_t nread;
         size_t nwrite;
         epicsFloat64 acquirePeriod;
@@ -1031,32 +1066,39 @@ asynStatus mythen::readoutFrames(size_t nFrames)
 
         getDoubleParam(ADAcquirePeriod, &acquirePeriod);
 
-        status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
-                read_cmd.c_str(), sizeof read_cmd.c_str(),
-                (char *)detArray, nread_expect,
-                M1K_TIMEOUT+acquirePeriod, &nwrite,
-                &nread, &eomReason);
-
-        if(nread == nread_expect) {
-            this->lock();
-            dataOK = dataCallback(detArray);
-            this->unlock();
-            if (not dataOK) {
+        while (true) {
+            asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
+                    read_cmd.c_str(), read_cmd.size(),
+                    &detArray[0], nread_expect,
+                    M1K_TIMEOUT, &nwrite,
+                    &nread, &eomReason);
+            if (not acquiring_.get_request()) {
+                return asynSuccess;
+            } else if (status == asynSuccess and nread == nread_expect) {
+                break;
+            } else if (status == asynSuccess and nread != nread_expect) {
                 asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                        "%s:%s: Received faulty data %d.\n",
-                        driverName, functionName, dataOK);
+                        "%s:%s: Not enough data recieved.\n",
+                        driverName, functionName);
+                return asynError;
+            } else if (status == asynError) {
+                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s:%s: Data not recieved from detector.\n",
+                        driverName, functionName);
                 return asynError;
             }
         }
-        if (status != asynSuccess or nread != nread_expect) {
+
+        lock();
+        dataOK = dataCallback(detArray);
+        unlock();
+        if (not dataOK) {
             asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                    "%s:%s: error using readout command status=%d, nRead=%zu, eomReason=%d\n",
-                    driverName, functionName, status, nread, eomReason);
+                    "%s:%s: Received faulty data %d.\n",
+                    driverName, functionName, dataOK);
             return asynError;
         }
-
     }
-    free(detArray);
 
     return asynSuccess;
 }
@@ -1067,14 +1109,14 @@ void mythen::acquisitionTask()
     // Number of acquired frames since acquisition start
 
     while (true) {
-        if (not acquiring_.request) {
+        if (not acquiring_.get_request()) {
             getStatus();
-            acquiring_.current = false;
+            acquiring_.set_current(false);
             setIntegerParam(ADAcquire, 0);
             callParamCallbacks();
             asynPrint(this->pasynUserSelf, ASYN_TRACE_FLOW,
                     "%s:%s: waiting for acquire to start\n", driverName, functionName);
-            startEvent_.wait();
+            startEvent_.wait(WAIT_TIMEOUT);
         } else {
             int detectorStatus;
 
@@ -1101,7 +1143,7 @@ void mythen::acquisitionTask()
                 continue;
             }
 
-            acquiring_.current = true;
+            acquiring_.set_current(true);
             setIntegerParam(ADAcquire, 1);
             callParamCallbacks();
 
@@ -1131,18 +1173,18 @@ void mythen::acquisitionTask()
                             driverName, functionName);
                     break;
                 }
-            } while (imageMode == ADImageContinuous and acquiring_.request);
+            } while (imageMode == ADImageContinuous and acquiring_.get_request());
 
             setAcquire(0);
         }
     }
 }
 
-bool mythen::dataCallback(epicsUInt32 * const pData)
+bool mythen::dataCallback(const std::vector<char>& pData)
 {
     NDArray *pImage;
     int ndims = 1;
-    size_t dims[2];
+    size_t dims[1];
     int arrayCallbacks;
     int imageCounter;
     int numImagesCounter;
@@ -1150,10 +1192,7 @@ bool mythen::dataCallback(epicsUInt32 * const pData)
     epicsInt32 colorMode = NDColorModeMono;
     epicsInt32 imageMode;
 
-    if (pData == NULL or pData[0] < 0) return false;
-
     dims[0] = MAX_DIMS*nmodules_;
-    dims[1] = 1;
 
     // Get the current time
     epicsTimeGetCurrent(&timeStamp);
@@ -1167,9 +1206,6 @@ bool mythen::dataCallback(epicsUInt32 * const pData)
     pImage->dims[0].size = dims[0];
     pImage->dims[0].offset = 0;
     pImage->dims[0].binning = 1;
-    pImage->dims[1].size = dims[1];
-    pImage->dims[1].offset = 0;
-    pImage->dims[1].binning = 1;
 
     pImage->pAttributeList->add("ColorMode", "Color Mode", NDAttrInt32, &colorMode);
 
@@ -1204,9 +1240,9 @@ bool mythen::dataCallback(epicsUInt32 * const pData)
         /* Call the NDArray callback */
         /* Must release the lock here, or we can get into a deadlock, because we can
          * block on the plugin lock, and the plugin can be calling us */
-        this->unlock();
+        unlock();
         doCallbacksGenericPointer(pImage, NDArrayData, 0);
-        this->lock();
+        lock();
     }
 
     /* We save the most recent good image buffer so it can be used in the
@@ -1227,9 +1263,10 @@ bool mythen::dataCallback(epicsUInt32 * const pData)
  * \param[out] result Array with the number of counts of all channels of size
  *             MAX_DIMS * nmodules_
  */
-void mythen::decodeRawReadout(epicsUInt32 * const data, epicsUInt32 * const result)
+void mythen::decodeRawReadout(const std::vector<char>& data, epicsUInt32 * const result)
 {
     int mask;
+    epicsUInt32 * const uint_data = (epicsUInt32 *)&data[0];
     unsigned int size = nmodules_ * MAX_DIMS / chanperline_;
 
     switch (nbits_) {
@@ -1252,7 +1289,7 @@ void mythen::decodeRawReadout(epicsUInt32 * const data, epicsUInt32 * const resu
         int shift = nbits_*j;
         int shiftedMask = mask<<shift;
         for (unsigned int i = 0; i < size; ++i) {
-            result[i*chanperline_+j] = ((data[i]&shiftedMask)>>shift)&mask;
+            result[i*chanperline_+j] = ((uint_data[i]&shiftedMask)>>shift)&mask;
         }
     }
 }
