@@ -5,7 +5,6 @@ This is an [EPICS](http://www.aps.anl.gov/epics/) [ADCore](https://github.com/ar
 #### Notes
 * Interface to devices with the M2.X.X firmware lacks commands for retrieval of some values which means that readback values are missing.
 * While the device supports per module settings the driver currently applies every setting to all modules.
-* ***External trigger modes are not supported yet***
 
 ## Mythen specific parameters
 | Parameter | Interface | Access | Description | Records |
@@ -22,6 +21,7 @@ This is an [EPICS](http://www.aps.anl.gov/epics/) [ADCore](https://github.com/ar
 | SDFirmwareVersion | asynOctet | R | Firmware version string. | $(P)$(R)FirmwareVersion\_RBV |
 | SDFirmwareMajor | asynInt32 | R | Major part of firmware number to ease hiding unsupported things in OPI. | $(P)$(R)FirmwareMajor\_RBV |
 | SDNModules | asynInt32 | R | Number of modules. | $(P)$(R)NumModules\_RBV |
+| SDReadout | asynInt32 | RW | Readout mode for controller box. In raw readout mode the controller sends raw bytes without any corrections to the driver which enables faster readout rate. | $(P)$(R)Readout <br/> $(P)$(R)Readout\_RBV |
 | SDUseGates | asynInt32 | RW\*\* | Enable or disable a gated acquisition. | $(P)$(R)UseGates <br/> $(P)$(R)UseGates\_RBV |
 | SDNumGates | asynInt32 | RW\*\* | Number of gates to use if gated acquisition is enabled. | $(P)$(R)NumGates <br/> $(P)$(R)NumGates\_RBV |
 \* <i>Only available on firmware M3.X.X </i><br/>
@@ -54,7 +54,6 @@ Some of the standard driver parameters are not implemented for various reasons.
 | ADFrameType | Not implemented. |
 | ADNumExposures | See SDUseGates, SDNumGates for gating. |
 | ADReadStatus | Not implemented. |
-| ADTimeRemaining | **TODO** |
 | Shutter related parameters | The detector does not have a shutter. |
 
 ## Build instructions
@@ -92,13 +91,4 @@ The driver can be compiled by issuing `make`.
 ## Example IOC
 
 **TODO** Write documentation on the IOC
-
-## Operator screens
-
-**TODO** GUIs are not yet created
-
-### TODOs
-- [ ] For now the driver always returns 32 bit unsigned integer array instead of adapting the data type to the bit depth.
-- [ ] The documentation of driver is still lacking.
-- [ ] External trigger modes are untested and not implemented properly
 
