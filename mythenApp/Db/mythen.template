@@ -456,6 +456,10 @@ record (longout, "$(P)$(R)NumExposures") {
     field(DISA, "1")
 }
 
+record (longin, "$(P)$(R)NumExposures_RBV") {
+    field(DISA, "1")
+}
+
 # Set from nbits
 # Data type of the array is for now always NDUInt32, should be infered from
 # nbits TODO

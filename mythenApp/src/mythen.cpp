@@ -586,7 +586,7 @@ asynStatus mythen::setAcquirePeriod(epicsFloat64 value)
     epicsFloat64 delayTime = value - exposureTime;
     if (delayTime < 0) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                "Acquisition period (%f) shorter than exposure time (%f)"
+                "Acquisition period (%f) shorter than exposure time (%f) "
                 "setting the acquisition period to %f.\n", value,
                 exposureTime, exposureTime);
         delayTime = 0;
@@ -598,6 +598,7 @@ asynStatus mythen::setAcquirePeriod(epicsFloat64 value)
         return asynOverflow;
     }
 
+    setDoubleParam(ADAcquirePeriod, exposureTime + delayTime);
     long long hns = (long long)(delayTime * (1E+7));
     return sendCommand("-delafter %d", hns);
 }
@@ -1627,8 +1628,10 @@ mythen::mythen(const char *portName, const char *IPPortName,
     status |= setIntegerParam(ADMaxSizeY, 1);
     status |= setIntegerParam(ADSizeX, MAX_DIMS*nmodules_);
     status |= setIntegerParam(ADSizeY, 1);
-    status |= setIntegerParam(ADMinX,  1);
-    status |= setIntegerParam(ADMinY,  1);
+    status |= setIntegerParam(ADMinX,  0);
+    status |= setIntegerParam(ADMinY,  0);
+    status |= setIntegerParam(ADBinX,  1);
+    status |= setIntegerParam(ADBinY,  1);
 
     status |= setIntegerParam(NDArraySize, MAX_DIMS*nmodules_*sizeof(epicsUInt32));
     status |= setIntegerParam(NDArraySizeX, MAX_DIMS*nmodules_);
