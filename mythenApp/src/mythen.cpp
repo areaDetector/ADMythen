@@ -65,6 +65,7 @@
 #define SDBitDepthString         "SD_BIT_DEPTH"
 #define SDUseGatesString         "SD_USE_GATES"
 #define SDNumGatesString         "SD_NUM_GATES"
+#define SDReadoutString          "SD_READOUT"
 #define SDResetString            "SD_RESET"
 #define SDFirmwareVersionString  "SD_FIRMWARE_VERSION"
 #define SDFirmwareMajorString    "SD_FIRMWARE_MAJOR"
@@ -225,6 +226,7 @@ class mythen : public ADDriver {
         int SDTrigger;
         int SDReset;
         int SDTau;
+        int SDReadout;
         int SDFirmwareVersion;
         int SDFirmwareMajor;
         int SDNModules;
@@ -252,6 +254,7 @@ class mythen : public ADDriver {
         asynStatus getFirmware();
         asynStatus readoutFrames(size_t nFrames);
         void decodeRawReadout(const std::vector<char>& data, epicsUInt32 * const result);
+        void decodeProcessedReadout(const std::vector<char>& data, epicsUInt32 * const result);
         asynStatus sendCommand(const char* format, ...);
         template <class T> T writeReadNumeric(const char* inString) const;
         template <int N> std::string writeReadOctet(const char* inString) const;
@@ -269,6 +272,11 @@ class mythen : public ADDriver {
             TriggerMode_None = 0,
             TriggerMode_Single = 1,
             TriggerMode_Continuous = 2
+        };
+
+        enum ReadoutMode {
+            ReadoutMode_Processed = 0,
+            ReadoutMode_Raw = 1
         };
 
     private:
@@ -1051,10 +1059,20 @@ static void acquisitionTaskC(void *drvPvt)
 asynStatus mythen::readoutFrames(size_t nFrames)
 {
     const char* functionName = "readoutFrames";
+    int readoutMode;
+    getIntegerParam(SDReadout, &readoutMode);
+    std::string read_cmd;
+    unsigned int nread_expect;
 
-    std::string read_cmd = "-readoutraw";
-    unsigned int nread_expect =
-        sizeof(epicsUInt32) * nmodules_ * MAX_DIMS / chanperline_;
+    if (static_cast<ReadoutMode>(readoutMode) == ReadoutMode_Raw) {
+        read_cmd = "-readoutraw";
+        nread_expect = sizeof(epicsUInt32) * nmodules_ *
+            MAX_DIMS / chanperline_;
+    } else {
+        read_cmd = "-readout";
+        nread_expect = sizeof(epicsUInt32) * nmodules_ * MAX_DIMS;
+    }
+
 
     for (size_t i = 0; i < nFrames; i++) {
         std::vector<char> detArray(nread_expect);
@@ -1191,6 +1209,7 @@ bool mythen::dataCallback(const std::vector<char>& pData)
     epicsTimeStamp timeStamp;
     epicsInt32 colorMode = NDColorModeMono;
     epicsInt32 imageMode;
+    epicsInt32 readoutMode;
 
     dims[0] = MAX_DIMS*nmodules_;
 
@@ -1199,7 +1218,13 @@ bool mythen::dataCallback(const std::vector<char>& pData)
 
     // Allocate a new image buffer
     pImage = this->pNDArrayPool->alloc(ndims, dims, NDInt32, MAX_DIMS*nmodules_*sizeof(epicsUInt32), NULL);
-    decodeRawReadout(pData, (epicsUInt32 *)pImage->pData);
+    getIntegerParam(SDReadout, &readoutMode);
+
+    if (static_cast<ReadoutMode>(readoutMode) == ReadoutMode_Raw) {
+        decodeRawReadout(pData, (epicsUInt32 *)pImage->pData);
+    } else {
+        decodeProcessedReadout(pData, (epicsUInt32 *)pImage->pData);
+    }
 
     pImage->dataType = NDUInt32;
     pImage->ndims = ndims;
@@ -1294,6 +1319,22 @@ void mythen::decodeRawReadout(const std::vector<char>& data, epicsUInt32 * const
     }
 }
 
+/**
+ * Decode routine for the processed readout.
+ *
+ * \param[in] data Response of the -readout command
+ * \param[out] result Array with the number of counts of all channels of size
+ *             MAX_DIMS * nmodules_
+ */
+void mythen::decodeProcessedReadout(const std::vector<char>& data, epicsUInt32 * const result)
+{
+    epicsUInt32 * const uint_data = (epicsUInt32 *)&data[0];
+    unsigned int size = nmodules_ * MAX_DIMS;
+
+    for (unsigned int i = 0; i < size; ++i) {
+        result[i] = uint_data[i] & 0xffffff;
+    }
+}
 
 /**
  * Called when asyn clients call pasynOctet->write().
@@ -1388,6 +1429,8 @@ asynStatus mythen::writeInt32(asynUser *pasynUser, epicsInt32 value)
     } else if (function == ADTriggerMode) {
         status |= ADDriver::writeInt32(pasynUser, value);
         status |= setTrigger(value);
+    } else if (function == SDReadout){
+        /* only save the parameter in the param store */
     } else if (function < FIRST_SD_PARAM) {
         /* If this is not a parameter we have handled call the base class */
         status |= ADDriver::writeInt32(pasynUser, value);
@@ -1550,6 +1593,7 @@ mythen::mythen(const char *portName, const char *IPPortName,
     createParam(SDNumGatesString,         asynParamInt32,   &SDNumGates);
     createParam(SDResetString,            asynParamInt32,   &SDReset);
     createParam(SDTauString,              asynParamFloat64, &SDTau);
+    createParam(SDReadoutString,          asynParamInt32,   &SDReadout);
     createParam(SDFirmwareVersionString,  asynParamOctet,   &SDFirmwareVersion);
     createParam(SDFirmwareMajorString,    asynParamInt32,   &SDFirmwareMajor);
     createParam(SDNModulesString,         asynParamInt32,   &SDNModules);

@@ -223,6 +223,31 @@ record (longin, "$(P)$(R)BitDepth_RBV")
 }
 
 #----------------------------------
+# Readout Mode
+#----------------------------------
+
+record (bo, "$(P)$(R)Readout")
+{
+    field (DESC, "Readout mode")
+    field (DTYP, "asynInt32")
+    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_READOUT")
+    field (ZNAM, "Processed")
+    field (ONAM, "Raw")
+    field (VAL,  "0")
+    field (PINI, "YES")
+}
+
+record (bi, "$(P)$(R)Readout_RBV")
+{
+    field (DESC, "Readout mode")
+    field (DTYP, "asynInt32")
+    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_READOUT")
+    field (ZNAM, "Processed")
+    field (ONAM, "Raw")
+    field (SCAN, "I/O Intr")
+}
+
+#----------------------------------
 # Enable Gates
 #----------------------------------
 
