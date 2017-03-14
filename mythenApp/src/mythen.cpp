@@ -558,11 +558,9 @@ asynStatus mythen::setExposureTime(epicsFloat64 value)
     epicsFloat64 period;
     int status = asynSuccess;
 
+    // Update Acquire period as downtime of the detector was changed
     getDoubleParam(ADAcquirePeriod, &period);
-    if (period < value) {
-        status |= setAcquirePeriod(value);
-    }
-
+    status |= setAcquirePeriod(period < value ? value : period);
     status |= sendCommand("-time %lld", hns);
 
     return (asynStatus)status;
@@ -1079,11 +1077,8 @@ asynStatus mythen::readoutFrames(size_t nFrames)
         std::vector<char> detArray(nread_expect);
         size_t nread;
         size_t nwrite;
-        epicsFloat64 acquirePeriod;
         int eomReason;
         bool dataOK;
-
-        getDoubleParam(ADAcquirePeriod, &acquirePeriod);
 
         while (true) {
             asynStatus status = pasynOctetSyncIO->writeRead(pasynUserMeter_,
