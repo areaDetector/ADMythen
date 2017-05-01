@@ -1210,7 +1210,7 @@ asynStatus mythen::writeFloat64(asynUser *pasynUser, epicsFloat64 value)
         status |= setTau(value);
     } else {
         /* If this is not a parameter we have handled call the base class */
-        if (function < NUM_SD_PARAMS) status = ADDriver::writeFloat64(pasynUser, value);
+        if (function < FIRST_SD_PARAM) status = ADDriver::writeFloat64(pasynUser, value);
     }
 
  
