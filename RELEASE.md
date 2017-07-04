@@ -9,3 +9,14 @@ Joe Sullivan, from APS [BCDA] (http://www.aps.anl.gov/bcda/), modified the it to
 
 Release Notes
 ============
+R2-0 (July 4, 2017)
+* Driver fixes
+  - Allow compiling on Windows
+  - Changes to work on big-endian machines
+  - Fixed error in writeFloat64; was comparing to NUM_SD_PARAMS, should be FIRST_SD_PARAM
+* Fixed medm screen to work with ADCore R3-0
+
+
+1-0  (August 10, 2015)
+========
+* Initial release
