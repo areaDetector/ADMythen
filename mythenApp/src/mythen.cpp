@@ -1001,11 +1001,7 @@ epicsInt32 mythen::dataCallback(epicsInt32 *pData)
     getIntegerParam(NDArrayCallbacks, &arrayCallbacks);
     if (arrayCallbacks) {
         /* Call the NDArray callback */
-        /* Must release the lock here, or we can get into a deadlock, because we can
-         * block on the plugin lock, and the plugin can be calling us */
-        this->unlock();
         doCallbacksGenericPointer(pImage, NDArrayData, 0);
-        this->lock();
     }
 
     /* We save the most recent good image buffer so it can be used in the
