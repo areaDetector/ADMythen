@@ -357,6 +357,17 @@ record(ai, "$(P)$(R)FirmwareMajor_RBV")
 }
 
 #----------------------------------
+# Serial Number
+#----------------------------------
+record(ai, "$(P)$(R)SerialNumber_RBV")
+{
+   field(PINI, "YES")
+   field(SCAN, "I/O Intr")
+   field(DTYP, "asynInt32")
+   field(INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_SERIAL_NUMBER")
+}
+
+#----------------------------------
 # Reset
 #----------------------------------
 record(ao, "$(P)$(R)Reset")

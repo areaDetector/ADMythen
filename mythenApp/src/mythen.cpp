@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <iostream>
 
 #include <epicsTime.h>
 #include <epicsThread.h>
@@ -70,6 +71,7 @@
 #define SDFirmwareVersionString  "SD_FIRMWARE_VERSION"
 #define SDFirmwareMajorString    "SD_FIRMWARE_MAJOR"
 #define SDNModulesString         "SD_NMODULES"
+#define SDSerialNumberString     "SD_SERIAL_NUMBER"
 
 namespace mythen {
 
@@ -230,6 +232,7 @@ class mythen : public ADDriver {
         int SDFirmwareVersion;
         int SDFirmwareMajor;
         int SDNModules;
+        int SDSerialNumber;
 #define LAST_SD_PARAM SDNModules
 
     private:
@@ -252,6 +255,7 @@ class mythen : public ADDriver {
         asynStatus getSettings();
         epicsInt32 getStatus();
         asynStatus getFirmware();
+        asynStatus getSerialNumber();
         asynStatus readoutFrames(size_t nFrames);
         void decodeRawReadout(const std::vector<char>& data, epicsUInt32 * const result);
         void decodeProcessedReadout(const std::vector<char>& data, epicsUInt32 * const result);
@@ -682,6 +686,25 @@ asynStatus mythen::getFirmware()
     } catch (const MythenConnectionError& e) {
         asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
                 "%s: Unable to read firmware version.\n",
+                driverName);
+        return asynError;
+    }
+}
+
+/**
+ * Reads the serial number of the mythen detector
+ *
+ * \return asynSuccess if the serial is successfuly read, asynError otherwise
+ */
+asynStatus mythen::getSerialNumber()
+{
+    try {
+        epicsInt32 serialNum = writeReadNumeric<epicsInt32>("-get systemnum");
+        setIntegerParam(SDSerialNumber, serialNum);
+        return asynSuccess;
+    } catch (const MythenConnectionError& e) {
+        asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                "%s: Unable to read serial number.\n",
                 driverName);
         return asynError;
     }
@@ -1593,6 +1616,7 @@ mythen::mythen(const char *portName, const char *IPPortName,
     createParam(SDFirmwareVersionString,  asynParamOctet,   &SDFirmwareVersion);
     createParam(SDFirmwareMajorString,    asynParamInt32,   &SDFirmwareMajor);
     createParam(SDNModulesString,         asynParamInt32,   &SDNModules);
+    createParam(SDSerialNumberString,     asynParamInt32,   &SDSerialNumber);
 
     status =  setStringParam (ADManufacturer, "Dectris");
     status |= setStringParam (ADModel,        "Mythen");
@@ -1600,6 +1624,7 @@ mythen::mythen(const char *portName, const char *IPPortName,
     status |= getFirmware();
     status |= setStringParam (SDFirmwareVersion, fwVersion_.c_str());
     status |= setIntegerParam (SDFirmwareMajor, fwVersion_.major());
+    status |= getSerialNumber();
 
     getStatus();
 
