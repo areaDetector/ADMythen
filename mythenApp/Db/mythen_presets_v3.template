@@ -1,0 +1,36 @@
+#----------------------------------
+# Detector Setting
+#----------------------------------
+
+record (mbbo, "$(P)$(R)Setting_V3")
+{
+    field (DESC, "Detector setting")
+    field (DTYP, "asynInt32")
+    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_SETTING")
+    field (ZRST, "Cu")
+    field (ZRVL, "0")
+    field (ONST, "Mo")
+    field (ONVL, "1")
+    field (TWST, "Ag")
+    field (TWVL, "2")
+    field (THST, "Cr")
+    field (THVL, "3")
+    field (VAL,  "0")
+    field (PINI, "YES")
+}
+
+record (mbbi, "$(P)$(R)Setting_V3_RBV")
+{
+    field (DESC, "Detector setting")
+    field (DTYP, "asynInt32")
+    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_SETTING")
+    field (ZRST, "Cu")
+    field (ZRVL, "0")
+    field (ONST, "Mo")
+    field (ONVL, "1")
+    field (TWST, "Ag")
+    field (TWVL, "2")
+    field (THST, "Cr")
+    field (THVL, "3")
+    field (SCAN, "I/O Intr")
+}

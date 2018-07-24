@@ -12,6 +12,8 @@ include $(TOP)/configure/CONFIG
 # databases, templates, substitutions like this
 
 DB += mythen.template
+DB += mythen_presets_v3.template
+DB += mythen_presets_v2.template
 
 #----------------------------------------------------
 # If <anyname>.db template is not named <anyname>*.template add

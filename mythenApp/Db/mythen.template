@@ -8,47 +8,12 @@
 # %macro, TIMEOUT, Timeout, default 1
 # %macro, ADDR, Asyn Port Address, default 0
 #
-# %gui, $(PORT), edmtab, mythen.edl, P=$(P),R=$(R)
+# %gui, $(PORT), edmtab, mythen_v3.edl, P=$(P),R=$(R)
 #================================================
 
 include "ADBase.template"
-
-#----------------------------------
-# Detector Setting
-#----------------------------------
-
-record (mbbo, "$(P)$(R)Setting")
-{
-    field (DESC, "Detector setting")
-    field (DTYP, "asynInt32")
-    field (OUT,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_SETTING")
-    field (ZRST, "Cu")
-    field (ZRVL, "0")
-    field (ONST, "Mo")
-    field (ONVL, "1")
-    field (TWST, "Ag")
-    field (TWVL, "2")
-    field (THST, "Cr")
-    field (THVL, "3")
-    field (VAL,  "0")
-    field (PINI, "YES")
-}
-
-record (mbbi, "$(P)$(R)Setting_RBV")
-{
-    field (DESC, "Detector setting")
-    field (DTYP, "asynInt32")
-    field (INP,  "@asyn($(PORT),$(ADDR=0),$(TIMEOUT=1))SD_SETTING")
-    field (ZRST, "Cu")
-    field (ZRVL, "0")
-    field (ONST, "Mo")
-    field (ONVL, "1")
-    field (TWST, "Ag")
-    field (TWVL, "2")
-    field (THST, "Cr")
-    field (THVL, "3")
-    field (SCAN, "I/O Intr")
-}
+include "mythen_presets_v2.template"
+include "mythen_presets_v3.template"
 
 #----------------------------------
 # Threshold Energy

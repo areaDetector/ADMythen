@@ -269,7 +269,11 @@ class mythen : public ADDriver {
             SettingPreset_Cu = 0,
             SettingPreset_Mo = 1,
             SettingPreset_Ag = 2, // Not supported on firmware versions less than 3
-            SettingPreset_Cr = 3
+            SettingPreset_Cr = 3, // Not supported on firmware versions less than 3
+            SettingPreset_Hg_Cr = 4,
+            SettingPreset_Hg_Cu = 5,
+            SettingPreset_Fst_Cu = 6,
+            SettingPreset_Fst_Mo = 7
         };
 
         enum TriggerMode {
@@ -813,48 +817,56 @@ asynStatus mythen::loadSettings(epicsInt32 value)
     for (i=0; i < nmodules_; ++i) {
         status = sendCommand("-module %d", i);
 
-        switch (value) {
-            case SettingPreset_Cu:
-                if (fwVersion_.major() >= 3) {
+        if (fwVersion_.major() == 3) {
+            switch (value) {
+                case SettingPreset_Cu:
                     status |= sendCommand("-settings Cu");
-                } else {
-                    status |= sendCommand("-settings StdCu");
-                }
-                break;
-
-            case SettingPreset_Mo:
-                if (fwVersion_.major() >= 3) {
+                    break;
+                case SettingPreset_Mo:
                     status |= sendCommand("-settings Mo");
-                } else {
-                    status |= sendCommand("-settings StdMo");
-                }
-                break;
-
-            case SettingPreset_Ag:
-                if (fwVersion_.major() >= 3) {
+                    break;
+                case SettingPreset_Ag:
                     status |= sendCommand("-settings Ag");
-                } else {
-                    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                            "%s: Ag setting is not supported on this version"
-                            "of firmware (%s)\n",
-                            driverName, fwVersion_.c_str());
-                    return asynError;
-                }
-                break;
-
-            case SettingPreset_Cr:
-                if (fwVersion_.major() >= 3) {
+                    break;
+                case SettingPreset_Cr:
                     status |= sendCommand("-settings Cr");
-                } else {
+                    break;
+                default:
+                    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s: Unknown setting %d, nothing was done.\n",
+                        driverName, value);
+                    return asynError;
+            }
+        } else if (fwVersion_.major() == 2) {
+            switch (value) {
+                case SettingPreset_Cu:
+                    status |= sendCommand("-settings StdCu");
+                    break;
+                case SettingPreset_Mo:
+                    status |= sendCommand("-settings StdMo");
+                    break;
+                case SettingPreset_Hg_Cr:
                     status |= sendCommand("-settings HgCr");
-                }
-                break;
-
-            default:
-                asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
-                    "%s: Unknown setting %d, nothing was done.\n",
-                    driverName, value);
-                return asynError;
+                    break;
+                case SettingPreset_Hg_Cu:
+                    status |= sendCommand("-settings HgCu");
+                    break;
+                case SettingPreset_Fst_Cu:
+                    status |= sendCommand("-settings FastCu");
+                    break;
+                case SettingPreset_Fst_Mo:
+                    status |= sendCommand("-settings FastMo");
+                    break;
+                default:
+                    asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s: Unknown setting %d, nothing was done.\n",
+                        driverName, value);
+                    return asynError;
+            }
+        } else{
+            asynPrint(pasynUserSelf, ASYN_TRACE_ERROR,
+                        "%s: Unknown firmware version %d, nothing was done.\n",
+                        driverName, fwVersion_.major());
         }
     }
 

@@ -3,8 +3,8 @@ beginScreenProperties
 major 4
 minor 0
 release 1
-x 412
-y 191
+x 414
+y 217
 w 390
 h 820
 font "arial-bold-r-12.0"
@@ -111,8 +111,8 @@ bgColor index 3
 inconsistentColor index 0
 topShadowColor index 1
 botShadowColor index 11
-controlPv "$(P)$(R)Setting"
-indicatorPv "$(P)$(R)Setting_RBV"
+controlPv "$(P)$(R)Setting_V3"
+indicatorPv "$(P)$(R)Setting_V3_RBV"
 font "arial-bold-r-12.0"
 endObjectProperties
 
