@@ -236,6 +236,8 @@ class mythen : public ADDriver {
 #define LAST_SD_PARAM SDNModules
 
     private:
+        bool automaticMode;
+
         /* These are the methods we implement from Mythen */
         asynStatus setAcquire(epicsInt32 value);
         asynStatus setFCorrection(epicsInt32 value);
@@ -273,7 +275,8 @@ class mythen : public ADDriver {
             SettingPreset_Hg_Cr = 4,
             SettingPreset_Hg_Cu = 5,
             SettingPreset_Fst_Cu = 6,
-            SettingPreset_Fst_Mo = 7
+            SettingPreset_Fst_Mo = 7,
+            SettingPreset_Auto = 8
         };
 
         enum TriggerMode {
@@ -483,7 +486,12 @@ asynStatus mythen::setKthresh(epicsFloat64 value)
 
     for(i=0; i<nmodules_; ++i) {
         status |= sendCommand("-module %d", i);
-        status |= sendCommand("-kthresh %f", value);
+        // If the Mythen is set to automatic use the -autosettings <f> command
+        if (automaticMode) {
+            status |= sendCommand("-autosettings %f", value);
+        } else {
+            status |= sendCommand("-kthresh %f", value);
+        }
     }
 
     if(status == asynSuccess) {
@@ -814,11 +822,20 @@ asynStatus mythen::loadSettings(epicsInt32 value)
     int status = asynSuccess;
     epicsInt32 i = 0;
 
+    automaticMode = false;
+
     for (i=0; i < nmodules_; ++i) {
         status = sendCommand("-module %d", i);
 
         if (fwVersion_.major() == 3) {
             switch (value) {
+                case SettingPreset_Auto:
+                    automaticMode = true;
+                    for(i=0; i<nmodules_; ++i) {
+                        status |= sendCommand("-module %d", i);
+                        status |= sendCommand("-autosettings 5");
+                    }
+                    break;
                 case SettingPreset_Cu:
                     status |= sendCommand("-settings Cu");
                     break;
@@ -839,6 +856,13 @@ asynStatus mythen::loadSettings(epicsInt32 value)
             }
         } else if (fwVersion_.major() == 2) {
             switch (value) {
+                case SettingPreset_Auto:
+                    automaticMode = true;
+                    for(i=0; i<nmodules_; ++i) {
+                        status |= sendCommand("-module %d", i);
+                        status |= sendCommand("-autosettings 5");
+                    }
+                    break;
                 case SettingPreset_Cu:
                     status |= sendCommand("-settings StdCu");
                     break;
