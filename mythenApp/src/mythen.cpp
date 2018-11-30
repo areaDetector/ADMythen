@@ -1,6 +1,6 @@
 /* mythen.cpp
  *
- * This is a driver for Dextris Mythen Detector. 
+ * This is a driver for Dectris Mythen Detector. 
  *
  * Based on the slsDetector driver by Xiaoqiang Wang (PSI) - June 8, 2012
  * Based on the asynPort driver from LNLS 
@@ -840,7 +840,7 @@ void mythen::acquisitionTask()
 {
     size_t nread, nread_expect;
     size_t nwrite;
-    int eventStatus;
+    int eventStatus=0;
     int imageMode;
     epicsInt32 acquire, eomReason;
     double acquireTime;
@@ -894,7 +894,8 @@ void mythen::acquisitionTask()
                 status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray_,
                                         nread_expect, M1K_TIMEOUT+acquireTime, &nwrite, &nread, &eomReason);  //Timeout is M1K_TIMEOUT + AcquireTime
 
-                //printf("nread_expected = %d\tnread = %d\n", nread_expect,nread);
+                //printf("nread_expected=%d, nread=%d, status=%d, timeout=%f, eomReason=%d\n",
+                //        (int)nread_expect, (int)nread, status, M1K_TIMEOUT+acquireTime, eomReason);
 
                 if(nread == nread_expect) {
                     this->lock();
