@@ -1,6 +1,10 @@
 SUPPORT=/dls_sw/prod/R3.14.12.3/support
 
+<<<<<<< HEAD
 ASYN=         $(SUPPORT)/asyn/4-26
+=======
+ASYN= $(SUPPORT)/asyn/4-26
+>>>>>>> 42b6eeb... temp
 ADCORE=       $(SUPPORT)/ADCore/2-4dls6
 
 EPICS_BASE=/dls_sw/epics/R3.14.12.3/base
