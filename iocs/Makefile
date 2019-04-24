@@ -1,7 +1,7 @@
 TOP = ..
 include $(TOP)/configure/CONFIG
 
-DIRS := example
+DIRS := $(wildcard *IOC)
 
 include $(TOP)/configure/RULES_TOP
 
