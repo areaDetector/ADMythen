@@ -13,3 +13,5 @@ auto_settings.sav*
 O.*/
 *~
 *.swp
+iocs/
+-iocs/Makefile
