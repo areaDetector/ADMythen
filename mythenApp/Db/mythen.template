@@ -324,7 +324,7 @@ record(ai, "$(P)$(R)FirmwareMajor_RBV")
 #----------------------------------
 # Serial Number
 #----------------------------------
-record(ai, "$(P)$(R)SerialNumber_RBV")
+record(ai, "$(P)$(R)MythenSerialNumber_RBV")
 {
    field(PINI, "YES")
    field(SCAN, "I/O Intr")

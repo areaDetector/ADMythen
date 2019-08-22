@@ -3,8 +3,8 @@ beginScreenProperties
 major 4
 minor 0
 release 1
-x 414
-y 217
+x 416
+y 353
 w 390
 h 820
 font "arial-bold-r-12.0"
@@ -770,7 +770,7 @@ x 295
 y 755
 w 85
 h 20
-controlPv "$(P)$(R)SerialNumber_RBV"
+controlPv "$(P)$(R)MythenSerialNumber_RBV"
 fgColor index 16
 fgAlarm
 bgColor index 10
