@@ -9,6 +9,12 @@ Joe Sullivan, from APS [BCDA] (http://www.aps.anl.gov/bcda/), modified the it to
 
 Release Notes
 ============
+R2-1 (December 11, 2019)
+* configure/RELEAE
+  - Changes to work with areaDetector R3-3.
+* Driver
+  - Minor improvement in debugging
+
 R2-0 (July 4, 2017)
 * Driver fixes
   - Allow compiling on Windows
