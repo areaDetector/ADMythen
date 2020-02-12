@@ -1292,7 +1292,6 @@ menu {
 		bclr=4
 	}
 	align="horiz. centered"
-	format="string"
 	limits {
 	}
 }
@@ -1483,7 +1482,6 @@ text {
 		clr=14
 		bclr=51
 	}
-	format="string"
 	limits {
 	}
 }
@@ -1583,7 +1581,6 @@ menu {
 		clr=54
 		bclr=4
 	}
-	format="string"
 	limits {
 	}
 }

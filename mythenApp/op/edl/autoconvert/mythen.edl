@@ -1823,7 +1823,7 @@ y 712
 w 90
 h 18
 controlPv "$(P)$(R)BitDepth_RBV"
-format "string"
+format "decimal"
 font "helvetica-medium-r-14.0"
 fontAlign "center"
 fgColor rgb 2560 0 47104
@@ -2059,7 +2059,7 @@ y 129
 w 100
 h 20
 controlPv "$(P)$(R)Tau"
-format "string"
+format "decimal"
 font "helvetica-medium-r-12.0"
 fontAlign "left"
 fgColor rgb 0 0 0
@@ -2173,7 +2173,7 @@ y 130
 w 100
 h 18
 controlPv "$(P)$(R)Tau_RBV"
-format "string"
+format "decimal"
 font "helvetica-medium-r-14.0"
 fontAlign "left"
 fgColor rgb 2560 0 47104
