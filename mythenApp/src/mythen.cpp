@@ -16,6 +16,11 @@
  *            2015-07-15  M. Moore ANL - APS/XSD/DET: Modified acquire sequence to handle trigger time outs
  *            2015-08-05  M. Moore ANL - APS/XSD/DET: Changed how readout timeouts are handled to be timeout+acquiretime
  *                                                    Handles ImageMode correctly, so that if you have single acquire it only acquires one image
+ *            2020-02-13 Oksana Ivashkevych -  NSLS2: Added asynPrint instead of printf for debugging, added comments about API specifics. 
+ *                                                    Removed unused code related to polling, removed some commented out code.
+ *                                                    Fixed ADStatus updates from driver to the parent. 
+ *                                                    mode "corrected" works well with soft triggers, mode "raw" does not work and need some work,
+ *                                                    external triggers has not been tested
  *
  */
  
@@ -91,7 +96,6 @@ public:
     virtual void report(FILE *fp, int details); 
 
     epicsInt32 dataCallback(epicsInt32 *pData); /* This should be private but is called from C so must be public */
-    //OKS To be removed void pollTask(); 
     void acquisitionTask(); 
     void shutdown(); 
  
@@ -272,45 +276,27 @@ asynStatus mythen::writeReadMeter()
 /** Starts and stops the acquisition. **/
 asynStatus mythen::setAcquire(epicsInt32 value)
 {
-    size_t nread;
-    size_t nwrite;
     asynStatus status = asynSuccess;
-    epicsInt32 eomReason;
     static const char *functionName = "setAcquire";
     asynPrint(pasynUserSelf, ASYN_TRACEIO_DRIVER, "%s:%s setAcquire to %d\n",driverName, functionName, value);
-    if (value == 0) {
-      //        while (1) {
-      //            // Repeat sending STOP until we get only a 0 back
-      //            status = pasynOctetSyncIO->setInputEos(pasynUserMeter_, "", 0);
-      //            if (status) break;
-    
-      // -stop command will stop acquision of the next frame if you are in a multiple mode
+    if (value == 0) { 
+      // -stop command will stop acquision of the next frame. Like windshield wipers in 2020, they shoud finish thier cleanning cycle.
       // If acquisition time is rather long, sending -stop command will time out for 5 sec, and the acquision will be finished anyways
-      // With long exposures,  and the added line "setIntegerParam(ADStatus, ADStatusAborting);"
-      // status is updated to Aborting 5 sec after pressing Stop together with AcquireBusy being set to Done 
-      // and Detector state to 5. 
-      // When time for the data comes, they are being prosessed and displayed and Detector State is set to 0. 
-      // the question is how  adequately update the status? Is it worth spending time, since no one will be using detector in this mode.
+      // getStatus() function of this driver queries its status.
       setIntegerParam(ADStatus, ADStatusAborting);
+      callParamCallbacks(); 
       strcpy(outString_, "-stop");
       this->sendCommand();
-
-       // Here getStatus times out in 5 sec because the driver is acquiring, Status needs to be updated elsewhere           
-       ////OKS     setIntegerParam(ADStatus, getStatus());
-        //            if (status == asynSuccess || status == asynTimeout) break;
-        //        }
       acquiring_ = 0;
+      setIntegerParam(ADStatus, getStatus());
+      callParamCallbacks(); 
     } else {
         if(!(acquiring_)) {                 
           strcpy(outString_,"-start");
           this->sendCommand();
           // Notify the read thread that acquisition has started
-                epicsEventSignal(startEventId_);
-          // Update the parent Status; Status will be updated from acquisionTask() after the first frame if in multiple mode.
-          /// If in a single and acquision time is long, status will be updated t the end of acquision as a flicker "Acquiring"/ "Idle"       
-          setIntegerParam(ADStatus, ADStatusAcquire);
-          printf("2222222222222222222222222222222222222222222222\n");
-          
+          epicsEventSignal(startEventId_);
+          // Status is being updated by the caller
           acquiring_ = 1;
         }
     }
@@ -536,14 +522,13 @@ epicsInt32 mythen::getStatus()
     aux = stringToInt32(this->inString_);
     int m_status =  aux & 1;          // Acquire running status (non-zero)
     int t_status = aux & (1<<3);      // Waiting for trigger (non-zero)        
-    int d_status = aux & (1<<16);     // No Data Available when not zero
+    int d_status = aux & (1<<16);     // No Data Available(empty buffer) when not zero
     int triggerWaitCnt=0;
     double triggerWait;
     
-    //printf("Mythen Status - M:%d\tT:%d\tD:%d\n",m_status,t_status, d_status);
     asynPrint(pasynUserSelf, ASYN_TRACEIO_DRIVER, 
               "Mythen Status - M:%d\tT:%d\tD:%d\n", m_status,t_status, d_status);
-    
+    /* Oksana 2/13/20 this section of code does not mame sence, commenting out for now.
     if (m_status || !d_status ) { 
       detStatus = ADStatusAcquire;
       
@@ -562,11 +547,16 @@ epicsInt32 mythen::getStatus()
         triggerWaitCnt++;
         
       }
-      
       if (!d_status)
         detStatus = ADStatusReadout;
       if (triggerWaitCnt==MAX_TRIGGER_TIMEOUT_COUNT)
         detStatus = ADStatusError;
+    }
+    */
+    if (m_status){
+        detStatus = ADStatusAcquire;
+        if (t_status)
+            detStatus = ADStatusWaiting;
     }
     else
       detStatus = ADStatusIdle;
@@ -829,37 +819,13 @@ void acquisitionTaskC(void *drvPvt)
     mythen *pPvt = (mythen*)drvPvt; 
     pPvt->acquisitionTask(); 
 }
-/* OKS TO be removed begin
-void pollTaskC(void *drvPvt)
-{
-    mythen *pPvt = (mythen*)drvPvt; 
-    pPvt->pollTask(); 
-}
-To be removed end */
+
 void mythen::shutdown()
 {
   //    if (pDetector)
   //        delete pDetector; 
 }
-/* OKS To be removed begin 
-void mythen::pollTask()
-{
-  static const char *functionName = "pollTask";
-    // int acquire; 
-    /* Poll detector running status every second
-    while (1) {
-        epicsThreadSleep(1); 
-asynPrint(pasynUserSelf, ASYN_TRACEIO_DRIVER, 
-                          "%s:%s: I am in pollTask() \n", driverName, functionName);
-        /* Update detector status 
-        this->lock(); 
-        // int detStatus = pDetector->getDetectorStatus();
-        // setIntegerParam(ADStatus, detStatus);
-        callParamCallbacks(); 
-        this->unlock(); 
-    }
-}
-To be removed end */
+
 void mythen::acquisitionTask()
 {
     size_t nread, nread_expect;
@@ -891,17 +857,16 @@ void mythen::acquisitionTask()
               // getIntegerParam(ADAcquire, &acquire);
               
                   
-            printf("Read Mode: %d\tnModules: %d\t chanperline: %d\n", readmode_,this->nmodules,chanperline_);
+            //printf("Read Mode: %d\tnModules: %d\t chanperline: %d\n", readmode_,this->nmodules,chanperline_);
             if (readmode_==0)       //Raw Mode
                 nread_expect = sizeof(epicsInt32)*this->nmodules*(1280/chanperline_);
             else
                 nread_expect = sizeof(epicsInt32)*this->nmodules*(1280);
                 
             dataOK = 1;
-            // This get status is not timing out! Maaybe the fist one doesn't. amd the later do time out.
             eventStatus = getStatus();
             setIntegerParam(ADStatus, eventStatus);
-            printf("1111111111111111111111111111111111\n");
+            callParamCallbacks(); 
             asynPrint(this->pasynUserSelf, ASYN_TRACEIO_DRIVER, 
                 "%s:%s:  getStatus() = %d, acquire = %d , acquiring_ = %d \n", driverName, functionName, eventStatus, acquire, acquiring_);
 
@@ -910,7 +875,7 @@ void mythen::acquisitionTask()
               getDoubleParam(ADAcquireTime,&acquireTime);
               // printf("Acquisition start - expect %d\n",nread_expect);
               asynPrint(pasynUserSelf, ASYN_TRACEIO_DRIVER, 
-                        "%s:%s: Acquisition start - expect %d\n",driverName, functionName, nread_expect);
+                        "%s:%s: Acquisition start - expect %lu\n",driverName, functionName, nread_expect);
               // Work on the cases of what are you getting from getstatus
               do {
                 nread=0;
@@ -935,6 +900,7 @@ void mythen::acquisitionTask()
                     if (!dataOK) {
                         eventStatus = getStatus();
                         setIntegerParam(ADStatus, eventStatus);
+                        callParamCallbacks(); 
                     }
 
                 }
@@ -972,7 +938,7 @@ void mythen::acquisitionTask()
                 driverName, functionName);
           acquiring_ = 0;
             setAcquire(0);
-          setIntegerParam(ADAcquire,  0); 
+          setIntegerParam(ADAcquire,  getStatus()); 
           callParamCallbacks(); 
         }
     }
