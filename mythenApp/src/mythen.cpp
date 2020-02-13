@@ -1,23 +1,24 @@
 /* mythen.cpp
  *
- * This is a driver for Dextris Mythen Detector.
+ * This is a driver for Dectris Mythen Detector.
  *
  * Based on the slsDetector driver by Xiaoqiang Wang (PSI) - June 8, 2012
- * Based on the asynPort driver from LNLS
+ * Based on the asynPort driver from LNLS 
  *
- * Author: J. Sullivan
+ * Author: J. Sullivan 
  *         ANL - APS/XSD/BCDA
  *
  * Created:  June 17 2015
  *
- * Modified:
- *            2015-07-14  M. Moore ANL - APS/XSD/DET: Upated to work with other firmwares
+ * Modified: 
+ *            2015-07-14  M. Moore ANL - APS/XSD/DET: Upated to work with other firmwares 
  *            2015-07-14  M. Moore ANL - APS/XSD/DET: Added ReadMode to allow Reading of corrected data from Detector
  *            2015-07-15  M. Moore ANL - APS/XSD/DET: Modified acquire sequence to handle trigger time outs
  *            2015-08-05  M. Moore ANL - APS/XSD/DET: Changed how readout timeouts are handled to be timeout+acquiretime
  *                                                    Handles ImageMode correctly, so that if you have single acquire it only acquires one image
+ *
  */
-
+ 
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -201,12 +202,12 @@ public:
  * This driver uses the socket interface over TCP/UDP.
  */
 class mythen : public ADDriver {
-    public:
-        mythen(const char *portName, const char *IPPortName,
-                int maxBuffers, size_t maxMemory,
-                int priority, int stackSize);
+public:
+    mythen(const char *portName, const char *IPPortName,
+                   int maxBuffers, size_t maxMemory,
+                   int priority, int stackSize);
 
-        /* These are the methods that we override from ADDriver */
+    /* These are the methods that we override from ADDriver */
         asynStatus writeInt32(asynUser *pasynUser, epicsInt32 value);
         asynStatus writeFloat64(asynUser *pasynUser, epicsFloat64 value);
         asynStatus writeOctet(asynUser *pasynUser, const char *value,
@@ -214,26 +215,26 @@ class mythen : public ADDriver {
         void report(FILE *fp, int details);
         void acquisitionTask();
 
-    protected:
-        int SDSetting;
+  protected:
+    int SDSetting;
 #define FIRST_SD_PARAM SDSetting
-        int SDThreshold;
-        int SDEnergy;
-        int SDUseFlatField;
-        int SDUseCountRate;
-        int SDUseBadChanIntrpl;
-        int SDBitDepth;
-        int SDUseGates;
-        int SDNumGates;
-        int SDTrigger;
-        int SDReset;
-        int SDTau;
-        int SDReadout;
-        int SDFirmwareVersion;
-        int SDFirmwareMajor;
-        int SDNModules;
-        int SDSerialNumber;
-#define LAST_SD_PARAM SDNModules
+    int SDThreshold;
+    int SDEnergy;
+    int SDUseFlatField;
+    int SDUseCountRate;
+    int SDUseBadChanIntrpl;
+    int SDBitDepth;
+    int SDUseGates;
+    int SDNumGates;
+    int SDTrigger;
+    int SDReset;
+    int SDTau;
+    int SDReadout;
+    int SDFirmwareVersion;
+    int SDFirmwareMajor;
+    int SDNModules;
+    int SDSerialNumber;
+    #define LAST_SD_PARAM SDSerialNumber
 
     private:
         bool automaticMode;
@@ -1318,11 +1319,7 @@ bool mythen::dataCallback(const std::vector<char>& pData)
     getIntegerParam(NDArrayCallbacks, &arrayCallbacks);
     if (arrayCallbacks) {
         /* Call the NDArray callback */
-        /* Must release the lock here, or we can get into a deadlock, because we can
-         * block on the plugin lock, and the plugin can be calling us */
-        unlock();
         doCallbacksGenericPointer(pImage, NDArrayData, 0);
-        lock();
     }
 
     /* We save the most recent good image buffer so it can be used in the
