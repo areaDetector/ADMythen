@@ -4,7 +4,6 @@ include $(TOP)/configure/CONFIG
 BUILD_IOCS=YES
 DIRS := $(DIRS) configure
 DIRS := $(DIRS) mythenApp
-DIRS := $(DIRS) $(filter-out $(DIRS), $(wildcard etc))
 etc_DEPENDS_DIRS += mythenApp
 ifeq ($(BUILD_IOCS), YES)
 DIRS := $(DIRS) $(filter-out $(DIRS), $(wildcard iocs))

@@ -1,8 +1,5 @@
 TOP = ..
 include $(TOP)/configure/CONFIG
-
-DIRS := example
-
 include $(TOP)/configure/RULES_TOP
 
 uninstallTargets = $(foreach dir, $(DIRS), $(dir)$(DIVIDER)uninstall)
