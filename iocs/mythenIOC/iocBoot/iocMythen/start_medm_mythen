@@ -1,0 +1,3 @@
+#!/bin/bash
+
+medm -x -macro "P="$1":, R=cam1: " mythen.adl &
