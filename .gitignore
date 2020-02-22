@@ -2,6 +2,7 @@ bin
 lib
 include
 db
+data
 dbd
 *_BAK.adl
 documentation.html
@@ -9,7 +10,6 @@ envPaths*
 cdCommands
 dllPath.bat
 auto_settings.sav*
-configure/*.local
 O.*/
 *~
 *.swp

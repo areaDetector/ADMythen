@@ -1,8 +1,10 @@
 #Makefile at top of application tree
 TOP = .
 include $(TOP)/configure/CONFIG
+BUILD_IOCS=YES
 DIRS := $(DIRS) configure
 DIRS := $(DIRS) mythenApp
+etc_DEPENDS_DIRS += mythenApp
 ifeq ($(BUILD_IOCS), YES)
 DIRS := $(DIRS) $(filter-out $(DIRS), $(wildcard iocs))
 iocs_DEPEND_DIRS += mythenApp

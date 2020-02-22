@@ -5,12 +5,10 @@ include $(TOP)/configure/CONFIG
 #=============================
 
 LIBRARY_IOC += mythen
-LIB_SRCS += mythen.cpp
+mythen_SRCS += mythen.cpp
 
 # <name>.dbd will be created from <name>Include.dbd
 DBD += mythenSupport.dbd
-
-include $(ADCORE)/ADApp/commonLibraryMakefile
 
 #=============================
 
