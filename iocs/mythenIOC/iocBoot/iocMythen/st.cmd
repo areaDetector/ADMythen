@@ -53,7 +53,7 @@ dbLoadRecords("$(ADCORE)/db/NDStdArrays.template", "P=$(PREFIX),R=image1:,PORT=I
 # Load asynRecord records on Mythen communication
 dbLoadRecords("$(ASYN)/db/asynRecord.db", "P=$(PREFIX),R=asyn_1,PORT=IP_M1K,ADDR=0,OMAX=256,IMAX=256")
 
-set_requestfile_path("$(TOP)/mythenApp/Db")
+set_requestfile_path("$(ADMYTHEN)/mythenApp/Db")
 
 iocInit()
 
