@@ -61,10 +61,10 @@ Installation
 ------------
 
 Prerequisites
-~~~~~~~~~~~~
+~~~~~~~~~~~~~
 
 Required EPICS Modules
-^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^
 
 * **EPICS Base**: Version 3.14.12 or later (or EPICS 7.x)
 * **areaDetector Modules**:
@@ -417,10 +417,12 @@ Detector Settings
 **SD_SETTING** (mbbo/mbbi)
 * **Description**: Detector setting for predefined X-ray source configurations
 * **Values**:
+
   * 0 = Cu (Copper)
   * 1 = Mo (Molybdenum)
   * 2 = Ag (Silver)
   * 3 = Cr (Chromium)
+
 * **Access**: Read/Write
 * **EPICS Records**: ``$(P)$(R)Setting``, ``$(P)$(R)Setting_RBV``
 
@@ -451,9 +453,11 @@ Acquisition Parameters
 **SD_TRIGGER** (mbbo/mbbi)
 * **Description**: Trigger mode
 * **Values**:
+
   * 0 = None (software trigger only)
   * 1 = Single (external trigger for single frame)
   * 2 = Continuous (continuous acquisition on external triggers)
+
 * **Default**: 0 (None)
 * **Access**: Read/Write
 * **EPICS Records**: ``$(P)$(R)TriggerMode``, ``$(P)$(R)TriggerMode_RBV``
@@ -461,8 +465,10 @@ Acquisition Parameters
 **SD_READ_MODE** (mbbo/mbbi)
 * **Description**: Data readout mode
 * **Values**:
+
   * 0 = Raw (uncorrected data from detector)
   * 1 = Corrected (data with corrections applied)
+
 * **Default**: 0 (Raw)
 * **Access**: Read/Write
 * **EPICS Records**: ``$(P)$(R)ReadMode``, ``$(P)$(R)ReadMode_RBV``
@@ -526,10 +532,12 @@ Data Format
 **SD_BIT_DEPTH** (mbbo/longin)
 * **Description**: Bit depth for data readout
 * **Values**:
+
   * 0 = 24 bits
   * 1 = 16 bits
   * 2 = 8 bits
   * 3 = 4 bits
+
 * **Default**: 0 (24 bits)
 * **Access**: Read/Write
 * **EPICS Records**: ``$(P)$(R)BitDepth``, ``$(P)$(R)BitDepth_RBV``
