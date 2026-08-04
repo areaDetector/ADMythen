@@ -362,7 +362,9 @@ record (mbbo, "$(P)$(R)ReadMode")
     field (ZRVL, "0")
     field (ONST, "Corrected")
     field (ONVL, "1")
-    field (VAL,  "0")
+    field (TWST, "Test Pattern")
+    field (TWVL, "2")
+    field (VAL,  "1")
     field (PINI, "YES")
 }
 
@@ -375,6 +377,8 @@ record (mbbi, "$(P)$(R)ReadMode_RBV")
     field (ZRVL, "0")
     field (ONST, "Corrected")
     field (ONVL, "1")
+    field (TWST, "Test Pattern")
+    field (TWVL, "2")
     field (SCAN, "I/O Intr")
 }
 

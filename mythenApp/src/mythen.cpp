@@ -888,24 +888,23 @@ void mythen::acquisitionTask()
                 nread=0;
                 if (readmode_==0)
                   strcpy(outString_, "-readoutraw");
-                else
+                else if (readmode_==1)
                   strcpy(outString_, "-readout");
+                else
+                  strcpy(outString_, "-testpattern");
 
                 status = pasynOctetSyncIO->writeRead(pasynUserMeter_, outString_, strlen(outString_), (char *)detArray_,
                                         nread_expect, M1K_TIMEOUT+acquireTime, &nwrite, &nread, &eomReason);  //Timeout is M1K_TIMEOUT + AcquireTime
 
-                //printf("nread_expected=%d, nread=%d, status=%d, timeout=%f, eomReason=%d\n",
-                //        (int)nread_expect, (int)nread, status, M1K_TIMEOUT+acquireTime, eomReason);
+                asynPrint(pasynUserSelf, ASYN_TRACE_FLOW, "%s:%s: nread_expected=%d, nread=%d, status=%d, timeout=%f, eomReason=%d\n",
+                       driverName, functionName, (int)nread_expect, (int)nread, status, M1K_TIMEOUT+acquireTime, eomReason);
 
                 if(nread == nread_expect) {
                     this->lock();
                     dataOK = dataCallback(detArray_);
                     this->unlock();
-                    if (!dataOK) {
-                        eventStatus = getStatus();
-                        setIntegerParam(ADStatus, eventStatus);
-                    }
-
+                    eventStatus = getStatus();
+                    setIntegerParam(ADStatus, eventStatus);
                 }
                 else {
                     eventStatus = getStatus();

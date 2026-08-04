@@ -11,9 +11,9 @@ mythenApp_registerRecordDeviceDriver(pdbbase)
 
 #drvAsynIPPortConfigure("portName","hostInfo",priority,noAutoConnect,
 #                        noProcessEos)
-drvAsynIPPortConfigure("IP_M1K", "192.168.0.90:1030 UDP", 0, 0, 1)
+#drvAsynIPPortConfigure("IP_M1K", "192.168.0.90:1030 UDP", 0, 0, 1)
 #drvAsynIPPortConfigure("IP_M1K", "192.168.0.90:1031", 0, 0, 1)
-#drvAsynIPPortConfigure("IP_M1K", "164.54.109.66:1031", 0, 0, 0)
+drvAsynIPPortConfigure("IP_M1K", "164.54.109.66:1031", 0, 0, 0)
 
 #asynOctetSetInputEos("IP_M1K",0,"\r\n")
 asynOctetSetOutputEos("IP_M1K",0,"\r")
@@ -58,4 +58,4 @@ set_requestfile_path("$(TOP)/mythenApp/Db")
 iocInit()
 
 # save things every thirty seconds
-create_monitor_set("auto_settings.req", 30,"P=$(PREFIX),D=cam1:")
+create_monitor_set("auto_settings.req", 30,"P=$(PREFIX)")
